@@ -5,13 +5,11 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "/api/src/index.js"
+      "destination": "/api/dist/index.js"
     }
   ],
   "functions": {
-    "api/src/index.js": {
-      "includeFiles": "api/**"
-    }
+    "api/dist/index.js": {}
   },
   "headers": [
     {
