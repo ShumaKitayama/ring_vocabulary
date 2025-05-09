@@ -9,9 +9,13 @@
     "dev": "concurrently \"npm run dev:api\" \"npm run dev:frontend\"",
     "build:frontend": "cd frontend && npm run build",
     "build:api": "cd api && npm run build",
-    "build": "npm run build:api && npm run build:frontend"
+    "build": "npm run build:api && npm run build:frontend",
+    "vercel-build": "npm install && cd api && npm install && cd ../frontend && npm install && npm run build"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }

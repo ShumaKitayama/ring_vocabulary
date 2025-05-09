@@ -9,14 +9,22 @@
       "src": "frontend/package.json",
       "use": "@vercel/static-build",
       "config": {
-        "distDir": "dist"
+        "distDir": "dist",
+        "buildCommand": "cd frontend && npm run build"
       }
     }
   ],
   "routes": [
     {
+      "src": "/favicon.ico",
+      "dest": "frontend/public/favicon.ico"
+    },
+    {
       "src": "/api/(.*)",
       "dest": "api/src/index.ts"
+    },
+    {
+      "handle": "filesystem"
     },
     {
       "src": "/(.*)",
