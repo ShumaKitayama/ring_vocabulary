@@ -1,0 +1,17 @@
+{
+  "name": "ring-vocabulary",
+  "version": "1.0.0",
+  "description": "画像から単語を抽出し、単語帳学習ができるアプリ",
+  "private": true,
+  "scripts": {
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:api": "cd api && npm run dev",
+    "dev": "concurrently \"npm run dev:api\" \"npm run dev:frontend\"",
+    "build:frontend": "cd frontend && npm run build",
+    "build:api": "cd api && npm run build",
+    "build": "npm run build:api && npm run build:frontend"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
