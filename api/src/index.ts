@@ -9,17 +9,24 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 // 環境変数の読み込み
 dotenv.config();
 
-// APIキーの取得（実際のデプロイ時はVercelの環境変数から取得します）
+// APIキーの取得
 const apiKey = process.env.GEMINI_API_KEY || "your_api_key_here";
 console.log(
   "Using API Key:",
-  apiKey.substring(0, 5) + "..." + apiKey.substring(apiKey.length - 5)
-); // APIキーの一部のみをログに表示
+  apiKey.length > 10
+    ? apiKey.substring(0, 5) + "..." + apiKey.substring(apiKey.length - 5)
+    : "キーが設定されていません"
+);
 const genAI = new GoogleGenerativeAI(apiKey);
 
 // Expressアプリケーションの初期化
 const app = express();
 const port = process.env.PORT || 3001;
+
+// Vercel用の起動ログ
+if (process.env.VERCEL) {
+  console.log("Running on Vercel");
+}
 
 // CORSミドルウェアの設定
 app.use(
@@ -189,16 +196,25 @@ app.post(
   }
 );
 
+// ルートエンドポイント
+app.get("/api", (req: Request, res: Response) => {
+  res.status(200).json({ message: "Ring Vocabulary API" });
+});
+
 // ヘルスチェック用エンドポイント
 app.get("/api/health", (req: Request, res: Response) => {
   res.status(200).json({ status: "ok" });
 });
 
-// サーバー起動
-if (process.env.NODE_ENV !== "test") {
+// サーバー起動（Vercel Functionsでは不要）
+if (process.env.NODE_ENV !== "test" && !process.env.VERCEL) {
   app.listen(port, () => {
     console.log(`サーバーが起動しました: http://localhost:${port}`);
   });
 }
 
+// モジュールエクスポート
 export default app;
+
+// Vercel Functions用のエクスポート
+module.exports = app;
