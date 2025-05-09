@@ -22,12 +22,24 @@ const app = express();
 const port = process.env.PORT || 3001;
 
 // CORSミドルウェアの設定
-app.use(cors());
+app.use(
+  cors({
+    origin:
+      process.env.NODE_ENV === "production"
+        ? ["https://ring-vocabulary.vercel.app", /\.vercel\.app$/]
+        : "http://localhost:5173",
+    credentials: true,
+  })
+);
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
 // アップロードディレクトリの設定（一時ファイル用）
-const uploadDir = path.join(__dirname, "../uploads");
+const isVercel = process.env.VERCEL === "1";
+const uploadDir = isVercel
+  ? path.join("/tmp", "uploads")
+  : path.join(__dirname, "../uploads");
+
 console.log("Upload directory:", uploadDir);
 if (!fs.existsSync(uploadDir)) {
   console.log("Creating upload directory...");
@@ -177,9 +189,16 @@ app.post(
   }
 );
 
-// サーバー起動
-app.listen(port, () => {
-  console.log(`サーバーが起動しました: http://localhost:${port}`);
+// ヘルスチェック用エンドポイント
+app.get("/api/health", (req: Request, res: Response) => {
+  res.status(200).json({ status: "ok" });
 });
+
+// サーバー起動
+if (process.env.NODE_ENV !== "test") {
+  app.listen(port, () => {
+    console.log(`サーバーが起動しました: http://localhost:${port}`);
+  });
+}
 
 export default app;

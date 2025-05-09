@@ -10,7 +10,8 @@
     "build:frontend": "cd frontend && npm run build",
     "build:api": "cd api && npm run build",
     "build": "npm run build:api && npm run build:frontend",
-    "vercel-build": "npm install && cd api && npm install && cd ../frontend && npm install && npm run build"
+    "vercel-build": "npm install && cd api && npm install && npm run build && mkdir -p ../api && cp -r dist/* ../api/ && cd ../frontend && npm install && npm run build",
+    "start": "node api/index.js"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"

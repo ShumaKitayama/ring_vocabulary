@@ -1,6 +1,15 @@
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
-import { CssBaseline, ThemeProvider, createTheme, Box } from "@mui/material";
+import {
+  CssBaseline,
+  ThemeProvider,
+  createTheme,
+  Box,
+  Snackbar,
+  Alert,
+} from "@mui/material";
 import Home from "./pages/Home";
+import { useEffect, useState } from "react";
+import { checkApiHealth } from "./utils/api";
 
 // アプリケーションのテーマを設定
 const theme = createTheme({
@@ -26,6 +35,35 @@ const theme = createTheme({
 });
 
 function App() {
+  const [apiStatus, setApiStatus] = useState<"checking" | "ok" | "error">(
+    "checking"
+  );
+  const [apiError, setApiError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const checkHealth = async () => {
+      try {
+        const health = await checkApiHealth();
+        if (health.status === "ok") {
+          setApiStatus("ok");
+        } else {
+          setApiStatus("error");
+          setApiError("APIサーバーのステータスが異常です");
+        }
+      } catch (error) {
+        console.error("API健康チェックエラー:", error);
+        setApiStatus("error");
+        setApiError("APIサーバーに接続できません");
+      }
+    };
+
+    checkHealth();
+  }, []);
+
+  const handleCloseError = () => {
+    setApiError(null);
+  };
+
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline /> {/* CSSのリセット */}
@@ -50,6 +88,16 @@ function App() {
             {/* 将来的に必要であれば他のルートを追加できます */}
           </Routes>
         </Router>
+
+        <Snackbar
+          open={apiStatus === "error" && apiError !== null}
+          autoHideDuration={6000}
+          onClose={handleCloseError}
+        >
+          <Alert onClose={handleCloseError} severity="error">
+            {apiError}
+          </Alert>
+        </Snackbar>
       </Box>
     </ThemeProvider>
   );
