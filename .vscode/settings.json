@@ -1,0 +1,22 @@
+{
+  "deno.enable": false,
+  "deno.lint": true,
+  "deno.unstable": true,
+  "[typescript]": {
+    "deno.enable": false
+  },
+  "[typescriptreact]": {
+    "deno.enable": false
+  },
+  "deno.enablePaths": ["./supabase/functions"],
+  "deno.config": "./supabase/functions/deno.json",
+  "deno.importMap": "./supabase/functions/ocr/import_map.json",
+  "deno.suggest.imports.hosts": {
+    "https://deno.land": true,
+    "https://esm.sh": true
+  },
+  "typescript.tsdk": "node_modules/typescript/lib",
+  "files.associations": {
+    "**/supabase/functions/**/*.ts": "deno-ts"
+  }
+}

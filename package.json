@@ -5,16 +5,11 @@
   "private": true,
   "scripts": {
     "dev:frontend": "cd frontend && npm run dev",
-    "dev:api": "cd api && npm run dev",
-    "dev": "concurrently \"npm run dev:api\" \"npm run dev:frontend\"",
+    "dev": "npm run dev:frontend",
     "build:frontend": "cd frontend && npm run build",
-    "build:api": "cd api && npm run build",
-    "build": "npm run build:api && npm run build:frontend",
-    "vercel-build": "cd api && npm install && npm run build && cd .. && cd frontend && npm install && npm run build",
-    "start": "node api/src/index.js"
-  },
-  "devDependencies": {
-    "concurrently": "^8.2.2"
+    "build": "npm run build:frontend",
+    "vercel-build": "cd frontend && npm install && npm run build",
+    "start": "cd frontend && npm run preview"
   },
   "engines": {
     "node": ">=18.0.0"

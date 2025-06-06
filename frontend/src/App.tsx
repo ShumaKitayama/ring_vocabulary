@@ -1,15 +1,25 @@
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  Navigate,
+} from "react-router-dom";
 import {
   CssBaseline,
   ThemeProvider,
   createTheme,
   Box,
-  Snackbar,
-  Alert,
+  AppBar,
+  Toolbar,
+  Typography,
+  Button,
+  Container,
 } from "@mui/material";
 import Home from "./pages/Home";
-import { useEffect, useState } from "react";
-import { checkApiHealth } from "./utils/api";
+import { useAuth } from "./hooks/useAuth";
+import { AuthProvider } from "./context/AuthContextProvider";
+import AuthContainer from "./components/Auth/AuthContainer";
+import Profile from "./components/Auth/Profile";
 
 // アプリケーションのテーマを設定
 const theme = createTheme({
@@ -34,39 +44,57 @@ const theme = createTheme({
   },
 });
 
-function App() {
-  const [apiStatus, setApiStatus] = useState<"checking" | "ok" | "error">(
-    "checking"
-  );
-  const [apiError, setApiError] = useState<string | null>(null);
+// プライベートルート用のラッパーコンポーネント
+const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
+  const { user, loading } = useAuth();
 
-  useEffect(() => {
-    const checkHealth = async () => {
-      try {
-        const health = await checkApiHealth();
-        if (health.status === "ok") {
-          setApiStatus("ok");
-        } else {
-          setApiStatus("error");
-          setApiError("APIサーバーのステータスが異常です");
-        }
-      } catch (error) {
-        console.error("API健康チェックエラー:", error);
-        setApiStatus("error");
-        setApiError("APIサーバーに接続できません");
-      }
-    };
+  if (loading) {
+    return <div>読み込み中...</div>;
+  }
 
-    checkHealth();
-  }, []);
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
 
-  const handleCloseError = () => {
-    setApiError(null);
-  };
+  return <>{children}</>;
+};
+
+// 認証済みユーザー用のレイアウト
+const AuthenticatedLayout = ({ children }: { children: React.ReactNode }) => {
+  const { signOut, user } = useAuth();
 
   return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline /> {/* CSSのリセット */}
+    <>
+      <AppBar position="static">
+        <Toolbar>
+          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
+            Ring Vocabulary
+          </Typography>
+          <Box sx={{ display: "flex", alignItems: "center" }}>
+            <Typography variant="body2" sx={{ mr: 2 }}>
+              {user?.email}
+            </Typography>
+            <Button color="inherit" component="a" href="/profile">
+              プロフィール
+            </Button>
+            <Button color="inherit" onClick={signOut}>
+              ログアウト
+            </Button>
+          </Box>
+        </Toolbar>
+      </AppBar>
+      <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
+        {children}
+      </Container>
+    </>
+  );
+};
+
+function AppContent() {
+  const { user, loading } = useAuth();
+
+  return (
+    <Router>
       <Box
         sx={{
           display: "flex",
@@ -74,31 +102,51 @@ function App() {
           minHeight: "100vh",
           width: "100%",
           maxWidth: "100vw",
-          alignItems: "center",
-          justifyContent: "center",
           padding: 0,
           margin: 0,
-          py: 4,
           bgcolor: "#f5f5f5",
         }}
       >
-        <Router>
-          <Routes>
-            <Route path="/" element={<Home />} />
-            {/* 将来的に必要であれば他のルートを追加できます */}
-          </Routes>
-        </Router>
-
-        <Snackbar
-          open={apiStatus === "error" && apiError !== null}
-          autoHideDuration={6000}
-          onClose={handleCloseError}
-        >
-          <Alert onClose={handleCloseError} severity="error">
-            {apiError}
-          </Alert>
-        </Snackbar>
+        <Routes>
+          <Route
+            path="/login"
+            element={
+              !loading && user ? <Navigate to="/" replace /> : <AuthContainer />
+            }
+          />
+          <Route
+            path="/profile"
+            element={
+              <PrivateRoute>
+                <AuthenticatedLayout>
+                  <Profile />
+                </AuthenticatedLayout>
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/"
+            element={
+              <PrivateRoute>
+                <AuthenticatedLayout>
+                  <Home />
+                </AuthenticatedLayout>
+              </PrivateRoute>
+            }
+          />
+        </Routes>
       </Box>
+    </Router>
+  );
+}
+
+function App() {
+  return (
+    <ThemeProvider theme={theme}>
+      <CssBaseline /> {/* CSSのリセット */}
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
     </ThemeProvider>
   );
 }

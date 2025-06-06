@@ -8,9 +8,13 @@ import {
   List,
   ListItem,
   Paper,
+  CircularProgress,
+  Alert,
 } from "@mui/material";
 import { Delete as DeleteIcon, Add as AddIcon } from "@mui/icons-material";
 import type { WordPair } from "../types";
+import { useUserWords } from "../hooks/useUserWords";
+import { useAuth } from "../hooks/useAuth";
 
 interface WordEditFormProps {
   initialWordPairs: WordPair[];
@@ -26,6 +30,12 @@ const WordEditForm = ({
   const [wordPairs, setWordPairs] = useState<WordPair[]>([]);
   const [newWord, setNewWord] = useState("");
   const [newMeaning, setNewMeaning] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  // ユーザー単語管理フック
+  const { saveWords, loading, error } = useUserWords();
+  const { user } = useAuth();
 
   // 初期データが変更されたときにstateを更新
   useEffect(() => {
@@ -33,6 +43,13 @@ const WordEditForm = ({
       setWordPairs(initialWordPairs);
     }
   }, [initialWordPairs]);
+
+  // エラー処理
+  useEffect(() => {
+    if (error) {
+      setSaveError(error);
+    }
+  }, [error]);
 
   const handleWordChange = (index: number, value: string) => {
     const updated = [...wordPairs];
@@ -61,7 +78,7 @@ const WordEditForm = ({
     setNewMeaning("");
   };
 
-  const handleStart = () => {
+  const handleStart = async () => {
     if (wordPairs.length === 0) {
       alert(
         "単語が登録されていません。少なくとも1つの単語を追加してください。"
@@ -69,13 +86,62 @@ const WordEditForm = ({
       return;
     }
 
-    onComplete(wordPairs);
+    if (user) {
+      setSaving(true);
+      setSaveError(null);
+
+      try {
+        // 単語データを保存
+        await saveWords(wordPairs);
+
+        // 学習画面に遷移
+        onComplete(wordPairs);
+      } catch (err) {
+        console.error("単語保存エラー:", err);
+        setSaveError("単語の保存中にエラーが発生しました");
+      } finally {
+        setSaving(false);
+      }
+    } else {
+      // ログインしていない場合はそのまま次へ
+      onComplete(wordPairs);
+    }
+  };
+
+  // 重複除去と並べ替えを行う
+  const normalizeDictionary = () => {
+    // 単語のマップを作成
+    const wordMap = new Map<string, WordPair>();
+
+    // 同じ単語があれば上書き、ない場合は新規追加
+    wordPairs.forEach((pair) => {
+      const key = pair.word.toLowerCase().trim();
+      if (key !== "") {
+        wordMap.set(key, {
+          word: pair.word.trim(),
+          meaning: pair.meaning.trim(),
+        });
+      }
+    });
+
+    // MapをArrayに変換してアルファベット順に並べ替え
+    const normalizedArray = Array.from(wordMap.values()).sort((a, b) =>
+      a.word.localeCompare(b.word)
+    );
+
+    setWordPairs(normalizedArray);
   };
 
   return (
     <Box
       sx={{ width: "100%", mt: 3, display: "flex", flexDirection: "column" }}
     >
+      {saveError && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {saveError}
+        </Alert>
+      )}
+
       {/* 最初に単語追加セクション */}
       <Paper elevation={3} sx={{ p: 3, mb: 3 }}>
         <Typography variant="subtitle1" gutterBottom>
@@ -131,9 +197,27 @@ const WordEditForm = ({
           flexDirection: "column",
         }}
       >
-        <Typography variant="subtitle1" gutterBottom>
-          登録単語一覧 ({wordPairs.length}単語)
-        </Typography>
+        <Box
+          sx={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            mb: 2,
+          }}
+        >
+          <Typography variant="subtitle1">
+            登録単語一覧 ({wordPairs.length}単語)
+          </Typography>
+
+          <Button
+            variant="outlined"
+            size="small"
+            onClick={normalizeDictionary}
+            disabled={wordPairs.length === 0}
+          >
+            重複除去・並び替え
+          </Button>
+        </Box>
 
         {wordPairs.length === 0 ? (
           <Typography
@@ -193,10 +277,15 @@ const WordEditForm = ({
             variant="contained"
             color="primary"
             onClick={handleStart}
-            disabled={wordPairs.length === 0}
+            disabled={wordPairs.length === 0 || saving || loading}
             size="large"
+            sx={{ minWidth: 120 }}
           >
-            学習開始
+            {saving || loading ? (
+              <CircularProgress size={24} color="inherit" />
+            ) : (
+              "学習開始"
+            )}
           </Button>
         </Box>
       </Paper>

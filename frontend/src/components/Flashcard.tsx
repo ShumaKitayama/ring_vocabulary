@@ -1,11 +1,14 @@
-import { useState } from "react";
-import { Box, Typography, Button, Paper } from "@mui/material";
+import { useState, useEffect } from "react";
+import { Box, Typography, Button, Paper, Chip } from "@mui/material";
 import {
   ArrowBack as ArrowBackIcon,
   ArrowForward as ArrowForwardIcon,
   Refresh as RefreshIcon,
+  Check as CheckIcon,
 } from "@mui/icons-material";
 import type { WordPair } from "../types";
+import { useUserWords } from "../hooks/useUserWords";
+import { addDays } from "../utils/dateUtils";
 
 interface FlashcardProps {
   wordPairs: WordPair[];
@@ -19,6 +22,17 @@ const Flashcard = ({ wordPairs, onExit }: FlashcardProps) => {
   const [shuffledPairs, setShuffledPairs] = useState<WordPair[]>([
     ...wordPairs,
   ]);
+  const [masteredWords, setMasteredWords] = useState<Set<string>>(new Set());
+
+  // 単語状態管理フック
+  const { updateWordStatus, error } = useUserWords();
+
+  // エラー処理
+  useEffect(() => {
+    if (error) {
+      console.error("単語ステータス更新エラー:", error);
+    }
+  }, [error]);
 
   // シャッフル関数
   const shuffleCards = () => {
@@ -58,11 +72,46 @@ const Flashcard = ({ wordPairs, onExit }: FlashcardProps) => {
     setShowMeaning(!showMeaning);
   };
 
+  // 単語を「覚えた」としてマーク
+  const markAsMastered = async () => {
+    const currentPair = shuffledPairs[currentIndex];
+    if (!currentPair.id) return;
+
+    // 単語IDを覚えた単語リストに追加
+    const newMasteredWords = new Set(masteredWords);
+    newMasteredWords.add(currentPair.id);
+    setMasteredWords(newMasteredWords);
+
+    // 次の復習日を計算（現在は1日後）
+    const reviewDate = addDays(new Date(), 1);
+
+    try {
+      // Supabaseで単語の状態を更新
+      await updateWordStatus(
+        parseInt(currentPair.id),
+        true,
+        reviewDate.toISOString().split("T")[0]
+      );
+    } catch (error) {
+      console.error("単語ステータスの更新エラー:", error);
+    }
+
+    // 自動で次の単語へ（最後でなければ）
+    if (currentIndex < shuffledPairs.length - 1) {
+      handleNext();
+    }
+  };
+
   // 現在の単語ペア
   const currentPair = shuffledPairs[currentIndex];
 
   // 進捗状況
   const progress = `${currentIndex + 1} / ${shuffledPairs.length}`;
+
+  // 「覚えた」状態を確認
+  const isCurrentMastered = currentPair?.id
+    ? masteredWords.has(currentPair.id)
+    : false;
 
   return (
     <Box
@@ -107,6 +156,15 @@ const Flashcard = ({ wordPairs, onExit }: FlashcardProps) => {
           {progress}
         </Typography>
 
+        {isCurrentMastered && (
+          <Chip
+            label="覚えた単語"
+            color="success"
+            size="small"
+            sx={{ position: "absolute", top: 10, left: 10 }}
+          />
+        )}
+
         <Typography
           variant="h4"
           sx={{
@@ -150,6 +208,16 @@ const Flashcard = ({ wordPairs, onExit }: FlashcardProps) => {
 
         <Button
           variant="contained"
+          color="success"
+          startIcon={<CheckIcon />}
+          onClick={markAsMastered}
+          disabled={isCurrentMastered}
+        >
+          覚えた
+        </Button>
+
+        <Button
+          variant="contained"
           color="primary"
           endIcon={<ArrowForwardIcon />}
           onClick={handleNext}
@@ -173,6 +241,10 @@ const Flashcard = ({ wordPairs, onExit }: FlashcardProps) => {
           終了
         </Button>
       </Box>
+
+      <Typography variant="body2" sx={{ mt: 3, color: "text.secondary" }}>
+        覚えた単語は{masteredWords.size}個 / {wordPairs.length}個
+      </Typography>
     </Box>
   );
 };
