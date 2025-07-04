@@ -104,9 +104,11 @@ const ImageUploader = ({ onOcrComplete, onError }: ImageUploaderProps) => {
         reader.readAsDataURL(selectedFile);
       });
 
+      console.log("Base64 encoded image length:", base64.length);
       setUploadProgress(30);
 
       // Supabase Edge FunctionでOCR処理
+      console.log("Sending request to OCR function...");
       const { data, error } = await supabase.functions.invoke<OcrResponse>(
         "ocr",
         {
@@ -117,11 +119,34 @@ const ImageUploader = ({ onOcrComplete, onError }: ImageUploaderProps) => {
         }
       );
 
+      console.log("Received response from OCR function:", { data, error });
       setUploadProgress(90);
 
       // エラー処理
       if (error) {
-        throw new Error(error.message);
+        console.error("OCR function error:", error);
+
+        // より詳細なエラーメッセージを提供
+        let errorMessage = "OCR処理に失敗しました。";
+
+        if (
+          error.message.includes("non-2xx status code") ||
+          error.message.includes("FunctionsHttpError")
+        ) {
+          errorMessage =
+            "サーバーでエラーが発生しました。画像が正しく認識できないか、サービスが一時的に利用できません。";
+        } else if (
+          error.message.includes("network") ||
+          error.message.includes("fetch")
+        ) {
+          errorMessage =
+            "ネットワークエラーが発生しました。インターネット接続を確認してください。";
+        } else if (error.message.includes("timeout")) {
+          errorMessage =
+            "処理時間が長すぎます。より小さな画像で試してください。";
+        }
+
+        throw new Error(errorMessage);
       }
 
       // 処理結果にプレビュー画像のURLを追加

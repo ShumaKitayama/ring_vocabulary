@@ -75,20 +75,25 @@ const Flashcard = ({ wordPairs, onExit }: FlashcardProps) => {
   // 単語を「覚えた」としてマーク
   const markAsMastered = async () => {
     const currentPair = shuffledPairs[currentIndex];
-    if (!currentPair.id) return;
+    const userWordId = currentPair.user_word_id;
+
+    if (!userWordId) {
+      console.error("user_word_idが見つかりません:", currentPair);
+      return;
+    }
 
     // 単語IDを覚えた単語リストに追加
     const newMasteredWords = new Set(masteredWords);
-    newMasteredWords.add(currentPair.id);
+    newMasteredWords.add(userWordId);
     setMasteredWords(newMasteredWords);
 
     // 次の復習日を計算（現在は1日後）
     const reviewDate = addDays(new Date(), 1);
 
     try {
-      // Supabaseで単語の状態を更新
+      // Supabaseで単語の状態を更新（user_word_idを使用）
       await updateWordStatus(
-        parseInt(currentPair.id),
+        parseInt(userWordId),
         true,
         reviewDate.toISOString().split("T")[0]
       );
@@ -105,12 +110,39 @@ const Flashcard = ({ wordPairs, onExit }: FlashcardProps) => {
   // 現在の単語ペア
   const currentPair = shuffledPairs[currentIndex];
 
+  // 防御的チェック：データが正しく渡されているか確認
+  if (!shuffledPairs || shuffledPairs.length === 0) {
+    return (
+      <Box sx={{ mt: 3, textAlign: "center" }}>
+        <Typography variant="h6" color="error">
+          学習する単語がありません
+        </Typography>
+        <Button variant="outlined" onClick={onExit} sx={{ mt: 2 }}>
+          戻る
+        </Button>
+      </Box>
+    );
+  }
+
+  if (!currentPair) {
+    return (
+      <Box sx={{ mt: 3, textAlign: "center" }}>
+        <Typography variant="h6" color="error">
+          単語データの読み込みエラー
+        </Typography>
+        <Button variant="outlined" onClick={onExit} sx={{ mt: 2 }}>
+          戻る
+        </Button>
+      </Box>
+    );
+  }
+
   // 進捗状況
   const progress = `${currentIndex + 1} / ${shuffledPairs.length}`;
 
   // 「覚えた」状態を確認
-  const isCurrentMastered = currentPair?.id
-    ? masteredWords.has(currentPair.id)
+  const isCurrentMastered = currentPair?.user_word_id
+    ? masteredWords.has(currentPair.user_word_id)
     : false;
 
   return (

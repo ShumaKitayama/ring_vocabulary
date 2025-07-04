@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   Container,
   Box,
@@ -11,46 +11,38 @@ import {
   Card,
   CardContent,
   CardActions,
+  Tabs,
+  Tab,
 } from "@mui/material";
 import ImageUploader from "../components/ImageUploader";
 import WordEditForm from "../components/WordEditForm";
+import WordbookList from "../components/WordbookList";
 import Flashcard from "../components/Flashcard";
 import { useUserWords } from "../hooks/useUserWords";
-import type { OcrResponse, WordPair } from "../types";
+import type { OcrResponse, WordPair, ExtendedWordPair } from "../types";
 
 enum AppState {
-  UPLOAD, // 画像アップロード画面
+  HOME, // ホーム画面（タブ選択）
   EDIT, // 単語編集画面
   STUDY, // 学習画面
   REVIEW, // 復習画面
 }
 
+enum HomeTab {
+  CREATE, // 新規作成タブ
+  LEARN, // 学習タブ
+}
+
 const Home = () => {
-  const [appState, setAppState] = useState<AppState>(AppState.UPLOAD);
+  const [appState, setAppState] = useState<AppState>(AppState.HOME);
+  const [homeTab, setHomeTab] = useState<HomeTab>(HomeTab.CREATE);
   const [wordPairs, setWordPairs] = useState<WordPair[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [imageUrl, setImageUrl] = useState<string | null>(null); // 選択した画像のURLを保持するstate
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   // 単語データフック
   const { loadWords } = useUserWords();
-
-  // 単語データの読み込み
-  useEffect(() => {
-    const fetchUserWords = async () => {
-      setLoading(true);
-      try {
-        const userWords = await loadWords();
-        console.log("ユーザーの単語:", userWords);
-      } catch (err) {
-        console.error("単語データ読み込みエラー:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchUserWords();
-  }, [loadWords]);
 
   // OCR完了時の処理
   const handleOcrComplete = (result: OcrResponse) => {
@@ -69,29 +61,67 @@ const Home = () => {
     );
   };
 
-  // 単語編集完了時の処理
-  const handleEditComplete = (editedWordPairs: WordPair[]) => {
-    setWordPairs(editedWordPairs);
-    setAppState(AppState.STUDY);
+  // 単語帳保存完了時の処理
+  const handleSaveComplete = () => {
+    setAppState(AppState.HOME);
+    setHomeTab(HomeTab.LEARN); // 学習タブに切り替え
+    setWordPairs([]);
+    setImageUrl(null);
   };
 
-  // 学習終了時の処理
-  const handleStudyExit = () => {
-    setAppState(AppState.UPLOAD);
-    setWordPairs([]);
-    setImageUrl(null); // 画像URLもリセット
+  // 単語帳選択時の処理
+  const handleSelectWordbook = async (wordbookId: string) => {
+    setLoading(true);
+    try {
+      const selectedWords = await loadWords(wordbookId);
+
+      if (selectedWords.length > 0) {
+        // ExtendedWordPairからWordPairに変換
+        const wordPairsForStudy: WordPair[] = selectedWords.map(
+          (word: ExtendedWordPair) => ({
+            word: word.word,
+            meaning: word.meaning,
+            id: word.id,
+            mastered: word.mastered,
+            reviewDate: word.reviewDate,
+            user_word_id: word.user_word_id, // 重要：user_word_idを保持
+          })
+        );
+
+        setWordPairs(wordPairsForStudy);
+        setAppState(AppState.STUDY);
+      } else {
+        setError("単語帳にデータが見つかりません");
+      }
+    } catch (err) {
+      console.error("単語帳読み込みエラー:", err);
+      setError("単語帳の読み込み中にエラーが発生しました");
+    } finally {
+      setLoading(false);
+    }
   };
 
   // 復習モード開始
   const handleStartReview = async () => {
     setLoading(true);
     try {
-      // 今日復習すべき単語を取得
+      // 今日復習すべき単語を取得（特定の単語帳は指定しない）
       const reviewWords = await loadWords();
 
-      // 復習対象の単語がある場合、復習モードを開始
       if (reviewWords.length > 0) {
-        setWordPairs(reviewWords);
+        // ExtendedWordPairからWordPairに変換
+        const wordPairsForReview: WordPair[] = reviewWords.map(
+          (word: ExtendedWordPair) => ({
+            word: word.word,
+            meaning: word.meaning,
+            id: word.id,
+            mastered: word.mastered,
+            reviewDate: word.reviewDate,
+            user_word_id: word.user_word_id, // 重要：user_word_idを保持
+          })
+        );
+
+        setWordPairs(wordPairsForReview);
         setAppState(AppState.REVIEW);
       } else {
         setError("今日復習すべき単語はありません");
@@ -104,9 +134,28 @@ const Home = () => {
     }
   };
 
+  // 学習・復習終了時の処理
+  const handleStudyExit = () => {
+    setAppState(AppState.HOME);
+    setWordPairs([]);
+    setImageUrl(null);
+  };
+
+  // ホームに戻る
+  const handleBackToHome = () => {
+    setAppState(AppState.HOME);
+    setWordPairs([]);
+    setImageUrl(null);
+  };
+
   // スナックバーを閉じる
   const handleCloseError = () => {
     setError(null);
+  };
+
+  // タブ変更
+  const handleTabChange = (_event: React.SyntheticEvent, newValue: HomeTab) => {
+    setHomeTab(newValue);
   };
 
   return (
@@ -135,81 +184,100 @@ const Home = () => {
             画像から単語を抽出し、フラッシュカードで学習するアプリ
           </Typography>
 
-          {appState === AppState.UPLOAD && (
-            <>
-              <Box
-                sx={{
-                  display: "flex",
-                  flexDirection: { xs: "column", md: "row" },
-                  gap: 3,
-                  mb: 4,
-                }}
+          {appState === AppState.HOME && (
+            <Box>
+              <Tabs
+                value={homeTab}
+                onChange={handleTabChange}
+                centered
+                sx={{ mb: 4 }}
               >
-                {/* 新しい単語セット作成カード */}
-                <Card sx={{ flex: 1 }}>
-                  <CardContent>
-                    <Typography variant="h6" gutterBottom>
-                      新しい単語セットを作成
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      画像をアップロードして単語を抽出します
-                    </Typography>
-                  </CardContent>
-                  <CardActions sx={{ justifyContent: "center", pb: 2 }}>
-                    <Button
-                      variant="contained"
-                      onClick={() => setAppState(AppState.UPLOAD)}
-                      disabled={appState === AppState.UPLOAD}
-                    >
-                      画像アップロード
-                    </Button>
-                  </CardActions>
-                </Card>
+                <Tab label="新規作成" value={HomeTab.CREATE} />
+                <Tab label="学習・復習" value={HomeTab.LEARN} />
+              </Tabs>
 
-                {/* 復習カード */}
-                <Card sx={{ flex: 1 }}>
-                  <CardContent>
-                    <Typography variant="h6" gutterBottom>
-                      今日の復習
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      以前に学習した単語を復習します
-                    </Typography>
-                  </CardContent>
-                  <CardActions sx={{ justifyContent: "center", pb: 2 }}>
-                    <Button
-                      variant="contained"
-                      color="secondary"
-                      onClick={handleStartReview}
-                      disabled={loading}
-                    >
-                      {loading ? (
-                        <CircularProgress size={24} color="inherit" />
-                      ) : (
-                        "復習を始める"
-                      )}
-                    </Button>
-                  </CardActions>
-                </Card>
-              </Box>
+              {homeTab === HomeTab.CREATE && (
+                <Box>
+                  <Typography variant="h6" gutterBottom>
+                    画像から新しい単語帳を作成
+                  </Typography>
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{ mb: 3 }}
+                  >
+                    画像をアップロードして単語を抽出し、単語帳として保存します
+                  </Typography>
+                  <ImageUploader
+                    onOcrComplete={handleOcrComplete}
+                    onError={handleError}
+                  />
+                </Box>
+              )}
 
-              <ImageUploader
-                onOcrComplete={handleOcrComplete}
-                onError={handleError}
-              />
-            </>
+              {homeTab === HomeTab.LEARN && (
+                <Box>
+                  {/* 復習カード */}
+                  <Card sx={{ mb: 3 }}>
+                    <CardContent>
+                      <Typography variant="h6" gutterBottom>
+                        今日の復習
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        以前に学習した単語を復習します
+                      </Typography>
+                    </CardContent>
+                    <CardActions sx={{ justifyContent: "center", pb: 2 }}>
+                      <Button
+                        variant="contained"
+                        color="secondary"
+                        onClick={handleStartReview}
+                        disabled={loading}
+                      >
+                        {loading ? (
+                          <CircularProgress size={24} color="inherit" />
+                        ) : (
+                          "復習を始める"
+                        )}
+                      </Button>
+                    </CardActions>
+                  </Card>
+
+                  {/* 単語帳一覧 */}
+                  <WordbookList onSelectWordbook={handleSelectWordbook} />
+                </Box>
+              )}
+            </Box>
           )}
 
           {appState === AppState.EDIT && (
-            <WordEditForm
-              initialWordPairs={wordPairs}
-              onComplete={handleEditComplete}
-              imageUrl={imageUrl}
-            />
+            <Box>
+              <Button
+                variant="outlined"
+                onClick={handleBackToHome}
+                sx={{ mb: 2 }}
+              >
+                ← ホームに戻る
+              </Button>
+              <WordEditForm
+                initialWordPairs={wordPairs}
+                onSaved={handleSaveComplete}
+                imageUrl={imageUrl}
+              />
+            </Box>
           )}
 
           {(appState === AppState.STUDY || appState === AppState.REVIEW) && (
-            <Flashcard wordPairs={wordPairs} onExit={handleStudyExit} />
+            <Box>
+              <Button
+                variant="outlined"
+                onClick={handleStudyExit}
+                sx={{ mb: 2 }}
+              >
+                ← ホームに戻る
+              </Button>
+              <Flashcard wordPairs={wordPairs} onExit={handleStudyExit} />
+            </Box>
           )}
 
           <Snackbar

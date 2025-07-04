@@ -18,13 +18,13 @@ import { useAuth } from "../hooks/useAuth";
 
 interface WordEditFormProps {
   initialWordPairs: WordPair[];
-  onComplete: (wordPairs: WordPair[]) => void;
+  onSaved: () => void; // 保存完了時のコールバック
   imageUrl: string | null;
 }
 
 const WordEditForm = ({
   initialWordPairs,
-  onComplete,
+  onSaved,
   imageUrl,
 }: WordEditFormProps) => {
   const [wordPairs, setWordPairs] = useState<WordPair[]>([]);
@@ -78,7 +78,7 @@ const WordEditForm = ({
     setNewMeaning("");
   };
 
-  const handleStart = async () => {
+  const handleSave = async () => {
     if (wordPairs.length === 0) {
       alert(
         "単語が登録されていません。少なくとも1つの単語を追加してください。"
@@ -86,25 +86,38 @@ const WordEditForm = ({
       return;
     }
 
-    if (user) {
-      setSaving(true);
-      setSaveError(null);
+    if (!user) {
+      alert("ログインが必要です。");
+      return;
+    }
 
-      try {
-        // 単語データを保存
-        await saveWords(wordPairs);
+    setSaving(true);
+    setSaveError(null);
 
-        // 学習画面に遷移
-        onComplete(wordPairs);
-      } catch (err) {
-        console.error("単語保存エラー:", err);
-        setSaveError("単語の保存中にエラーが発生しました");
-      } finally {
-        setSaving(false);
-      }
-    } else {
-      // ログインしていない場合はそのまま次へ
-      onComplete(wordPairs);
+    try {
+      // 単語帳のタイトルを作成
+      const wordbookTitle = `単語帳 ${new Date().toLocaleDateString()} (${
+        wordPairs.length
+      }語)`;
+
+      // 単語データを単語帳として保存
+      console.log("単語帳保存開始:", wordPairs);
+      const wordbookId = await saveWords(wordPairs, wordbookTitle);
+      console.log("単語帳保存完了 - ID:", wordbookId);
+
+      alert(`単語帳「${wordbookTitle}」を保存しました！`);
+
+      // 保存完了をコールバックで通知
+      onSaved();
+    } catch (err) {
+      console.error("単語保存エラー:", err);
+      setSaveError(
+        err instanceof Error
+          ? err.message
+          : "単語の保存中にエラーが発生しました"
+      );
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -276,7 +289,7 @@ const WordEditForm = ({
           <Button
             variant="contained"
             color="primary"
-            onClick={handleStart}
+            onClick={handleSave}
             disabled={wordPairs.length === 0 || saving || loading}
             size="large"
             sx={{ minWidth: 120 }}
@@ -284,7 +297,7 @@ const WordEditForm = ({
             {saving || loading ? (
               <CircularProgress size={24} color="inherit" />
             ) : (
-              "学習開始"
+              "単語帳として保存"
             )}
           </Button>
         </Box>
