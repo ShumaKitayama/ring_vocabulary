@@ -14,6 +14,7 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  LinearProgress,
 } from "@mui/material";
 import {
   PhotoCamera as PhotoCameraIcon,
@@ -48,6 +49,7 @@ const FillInCreator: React.FC<FillInCreatorProps> = ({
   const [ocrTexts, setOcrTexts] = useState<FillInText[]>([]);
   const [loading, setLoading] = useState(false);
   const [ocrError, setOcrError] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   // 穴埋め選択の状態
   const [selectedTexts, setSelectedTexts] = useState<Set<string>>(new Set());
@@ -63,16 +65,22 @@ const FillInCreator: React.FC<FillInCreatorProps> = ({
       const file = event.target.files?.[0];
       if (!file) return;
 
+      console.log("Selected file:", file.name, file.type, file.size);
+
       // ファイルサイズとタイプの確認
       const maxSize = 4 * 1024 * 1024; // 4MB
       if (file.size > maxSize) {
-        setOcrError("ファイルサイズが4MBを超えています");
+        const errorMsg = "ファイルサイズが4MBを超えています";
+        console.error(errorMsg);
+        setOcrError(errorMsg);
         return;
       }
 
       const allowedTypes = ["image/jpeg", "image/jpg", "image/png"];
       if (!allowedTypes.includes(file.type)) {
-        setOcrError("対応していないファイル形式です（JPEG、PNGのみ対応）");
+        const errorMsg = "対応していないファイル形式です（JPEG、PNGのみ対応）";
+        console.error(errorMsg);
+        setOcrError(errorMsg);
         return;
       }
 
@@ -85,6 +93,7 @@ const FillInCreator: React.FC<FillInCreatorProps> = ({
 
       setSelectedFile(file);
       setOcrError(null);
+      setUploadProgress(0);
     },
     []
   );
@@ -93,11 +102,36 @@ const FillInCreator: React.FC<FillInCreatorProps> = ({
   const handleOcrProcess = async () => {
     if (!selectedFile) return;
 
+    console.log("Starting OCR process for fill-in problems");
     setLoading(true);
     setOcrError(null);
+    setUploadProgress(0);
 
     try {
+      // 進捗表示を更新
+      setUploadProgress(10);
+      console.log("Progress: 10% - Starting file processing");
+
+      setUploadProgress(30);
+      console.log("Progress: 30% - Sending to OCR API");
+
+      // OCR処理を実行
       const result = await performTextOcr(selectedFile);
+
+      console.log("OCR API response received:", result);
+      setUploadProgress(70);
+      console.log("Progress: 70% - Processing OCR results");
+
+      // レスポンスの検証
+      if (!result || !result.texts) {
+        throw new Error("OCR処理の結果が不正です");
+      }
+
+      if (result.texts.length === 0) {
+        throw new Error(
+          "画像から文章が検出されませんでした。より鮮明な画像を使用してください。"
+        );
+      }
 
       // FillInTextの形式に変換
       const texts: FillInText[] = result.texts.map((text, index) => ({
@@ -109,12 +143,62 @@ const FillInCreator: React.FC<FillInCreatorProps> = ({
         created_at: new Date().toISOString(),
       }));
 
+      console.log("Converted texts:", texts);
+      setUploadProgress(90);
+      console.log("Progress: 90% - Finalizing");
+
       setOcrTexts(texts);
-      setActiveStep(1); // 次のステップに進む
+      setUploadProgress(100);
+      console.log("Progress: 100% - OCR completed successfully");
+
+      // 少し待ってから次のステップに進む
+      setTimeout(() => {
+        setActiveStep(1);
+        setUploadProgress(0);
+      }, 500);
     } catch (err) {
-      setOcrError(
-        err instanceof Error ? err.message : "画像の読み取りに失敗しました"
-      );
+      console.error("OCR処理エラー:", err);
+      console.error("Error details:", {
+        message: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+      });
+
+      let errorMessage = "画像の読み取りに失敗しました";
+
+      if (err instanceof Error) {
+        if (
+          err.message.includes("timeout") ||
+          err.message.includes("タイムアウト")
+        ) {
+          errorMessage =
+            "OCR処理がタイムアウトしました。より小さな画像で試してください。";
+        } else if (
+          err.message.includes("network") ||
+          err.message.includes("ネットワーク")
+        ) {
+          errorMessage =
+            "ネットワークエラーが発生しました。インターネット接続を確認してください。";
+        } else if (
+          err.message.includes("quota") ||
+          err.message.includes("制限")
+        ) {
+          errorMessage =
+            "API利用制限に達しました。しばらくしてから再試行してください。";
+        } else if (
+          err.message.includes("format") ||
+          err.message.includes("形式")
+        ) {
+          errorMessage =
+            "画像形式が正しくありません。JPEGまたはPNG形式の画像を使用してください。";
+        } else if (err.message.includes("検出されませんでした")) {
+          errorMessage = err.message;
+        } else {
+          errorMessage = err.message;
+        }
+      }
+
+      setOcrError(errorMessage);
+      setUploadProgress(0);
     } finally {
       setLoading(false);
     }
@@ -135,6 +219,7 @@ const FillInCreator: React.FC<FillInCreatorProps> = ({
       );
       setActiveStep(2); // 次のステップに進む
     } catch (err) {
+      console.error("Text save error:", err);
       setOcrError(
         err instanceof Error ? err.message : "テキストの保存に失敗しました"
       );
@@ -205,6 +290,19 @@ const FillInCreator: React.FC<FillInCreatorProps> = ({
         </Alert>
       )}
 
+      {loading && (
+        <Box sx={{ width: "100%", mb: 2 }}>
+          <LinearProgress
+            variant="determinate"
+            value={uploadProgress}
+            sx={{ height: 8, borderRadius: 4, mb: 1 }}
+          />
+          <Typography variant="body2" color="text.secondary">
+            OCR処理中... {uploadProgress}%
+          </Typography>
+        </Box>
+      )}
+
       <input
         accept="image/jpeg,image/jpg,image/png"
         style={{ display: "none" }}
@@ -219,6 +317,7 @@ const FillInCreator: React.FC<FillInCreatorProps> = ({
           startIcon={<PhotoCameraIcon />}
           size="large"
           sx={{ mb: 3 }}
+          disabled={loading}
         >
           画像を選択
         </Button>

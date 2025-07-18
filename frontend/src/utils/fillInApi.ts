@@ -337,49 +337,145 @@ export async function getStudyProblems(
 export async function performTextOcr(
   imageFile: File
 ): Promise<TextOcrResponse> {
-  // ファイルをBase64エンコード
-  const base64 = await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      const base64String = result.split(",")[1];
-      resolve(base64String);
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(imageFile);
+  console.log("performTextOcr called with file:", {
+    name: imageFile.name,
+    size: imageFile.size,
+    type: imageFile.type,
   });
 
-  // タイムアウト処理付きのOCR API呼び出し
-  const timeoutMs = 30000; // 30秒タイムアウト
+  try {
+    // ファイルをBase64エンコード
+    console.log("Starting Base64 encoding...");
+    const base64 = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        const base64String = result.split(",")[1];
+        console.log("Base64 encoding completed, length:", base64String.length);
+        resolve(base64String);
+      };
+      reader.onerror = (error) => {
+        console.error("FileReader error:", error);
+        reject(new Error("ファイルの読み込みに失敗しました"));
+      };
+      reader.readAsDataURL(imageFile);
+    });
 
-  const ocrPromise = supabase.functions.invoke<TextOcrResponse>("ocr", {
-    body: {
+    // タイムアウト処理付きのOCR API呼び出し
+    const timeoutMs = 30000; // 30秒タイムアウト
+    console.log("Sending OCR request with timeout:", timeoutMs, "ms");
+
+    const requestBody = {
       image: base64,
       type: imageFile.type,
       mode: "text", // 文章読み取りモード
-    },
-  });
+    };
 
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => {
-      reject(
-        new Error(
-          "OCR処理がタイムアウトしました。より小さな画像で試してください。"
-        )
+    console.log("Request body prepared:", {
+      imageLength: base64.length,
+      type: imageFile.type,
+      mode: "text",
+    });
+
+    const ocrPromise = supabase.functions.invoke<TextOcrResponse>("ocr", {
+      body: requestBody,
+    });
+
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => {
+        console.error("OCR request timed out after", timeoutMs, "ms");
+        reject(
+          new Error(
+            "OCR処理がタイムアウトしました。より小さな画像で試してください。"
+          )
+        );
+      }, timeoutMs);
+    });
+
+    console.log("Starting OCR API call...");
+    const startTime = Date.now();
+    const { data, error } = await Promise.race([ocrPromise, timeoutPromise]);
+    const endTime = Date.now();
+
+    console.log("OCR API call completed in", endTime - startTime, "ms");
+    console.log("OCR response:", {
+      hasData: !!data,
+      hasError: !!error,
+      errorMessage: error?.message,
+      dataKeys: data ? Object.keys(data) : null,
+    });
+
+    if (error) {
+      console.error("OCR API error:", error);
+      console.error("Error details:", {
+        message: error.message,
+        name: error.name,
+        stack: error.stack,
+      });
+
+      // エラーの種類に応じたメッセージを提供
+      let errorMessage = "OCR処理に失敗しました";
+
+      if (error.message.includes("FunctionsHttpError")) {
+        errorMessage =
+          "画像の解析に失敗しました。画像が鮮明でない可能性があります。";
+      } else if (error.message.includes("non-2xx status code")) {
+        errorMessage =
+          "サーバーでエラーが発生しました。しばらくしてから再試行してください。";
+      } else if (error.message.includes("network")) {
+        errorMessage =
+          "ネットワークエラーが発生しました。インターネット接続を確認してください。";
+      } else if (error.message.includes("timeout")) {
+        errorMessage = "処理時間が長すぎます。より小さな画像で試してください。";
+      } else if (error.message.includes("quota")) {
+        errorMessage =
+          "API利用制限に達しました。しばらくしてから再試行してください。";
+      } else {
+        errorMessage = error.message;
+      }
+
+      throw new Error(errorMessage);
+    }
+
+    if (!data) {
+      console.error("OCR response data is null");
+      throw new Error("OCR処理の結果が取得できませんでした");
+    }
+
+    console.log("OCR data validation:", {
+      hasTexts: !!data.texts,
+      textsLength: data.texts?.length || 0,
+      hasRawText: !!data.rawText,
+      rawTextLength: data.rawText?.length || 0,
+    });
+
+    // データの妥当性をチェック
+    if (!data.texts || !Array.isArray(data.texts)) {
+      console.error("Invalid OCR response structure:", data);
+      throw new Error("OCR処理の結果が不正な形式です");
+    }
+
+    if (data.texts.length === 0) {
+      console.warn("No texts found in OCR response");
+      throw new Error(
+        "画像から文章が検出されませんでした。より鮮明な画像を使用してください。"
       );
-    }, timeoutMs);
-  });
+    }
 
-  const { data, error } = await Promise.race([ocrPromise, timeoutPromise]);
+    console.log("OCR processing completed successfully");
+    return data;
+  } catch (error) {
+    console.error("performTextOcr error:", error);
+    console.error(
+      "Error stack:",
+      error instanceof Error ? error.stack : undefined
+    );
 
-  if (error) {
-    console.error("Text OCR error:", error);
-    throw error;
+    // エラーを再スローする前に、わかりやすいメッセージに変換
+    if (error instanceof Error) {
+      throw error; // 既に適切なエラーメッセージが設定されている場合はそのまま
+    } else {
+      throw new Error("予期しないエラーが発生しました");
+    }
   }
-
-  if (!data) {
-    throw new Error("OCR response data is null");
-  }
-
-  return data;
 }

@@ -80,6 +80,7 @@ CREATE POLICY user_words_delete_policy ON user_words
   FOR DELETE USING (auth.uid() = user_id);
 
 -- user_profiles テーブルの RLS ポリシー（自分のデータのみ操作可能）
+-- サービスロールからのアクセスも許可するよう修正
 CREATE POLICY user_profiles_select_policy ON user_profiles
   FOR SELECT USING (auth.uid() = id);
   
@@ -89,16 +90,40 @@ CREATE POLICY user_profiles_insert_policy ON user_profiles
 CREATE POLICY user_profiles_update_policy ON user_profiles
   FOR UPDATE USING (auth.uid() = id);
 
+-- サービスロールからのプロファイル作成を許可するポリシー
+CREATE POLICY user_profiles_service_role_policy ON user_profiles
+  FOR ALL USING (auth.jwt() ->> 'role' = 'service_role');
+
 -- ユーザー登録時に自動的にプロファイルを作成するトリガー
+-- SECURITY DEFINERを使ってサービスロールの権限で実行
 CREATE OR REPLACE FUNCTION create_profile_for_new_user()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER 
+SECURITY DEFINER
+SET search_path = public
+AS $$
 BEGIN
-  INSERT INTO user_profiles (id, email)
-  VALUES (NEW.id, NEW.email);
+  -- user_profiles テーブルにプロファイルを作成
+  INSERT INTO public.user_profiles (id, email, display_name)
+  VALUES (
+    NEW.id, 
+    NEW.email,
+    COALESCE(NEW.raw_user_meta_data->>'display_name', split_part(NEW.email, '@', 1))
+  );
+  
   RETURN NEW;
+EXCEPTION
+  WHEN unique_violation THEN
+    -- 既に存在する場合はエラーを無視
+    RETURN NEW;
+  WHEN OTHERS THEN
+    -- その他のエラーをログに記録
+    RAISE LOG 'Error creating profile for user %: %', NEW.id, SQLERRM;
+    RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
+-- トリガーの削除と再作成
+DROP TRIGGER IF EXISTS create_profile_after_signup ON auth.users;
 CREATE TRIGGER create_profile_after_signup
 AFTER INSERT ON auth.users
 FOR EACH ROW

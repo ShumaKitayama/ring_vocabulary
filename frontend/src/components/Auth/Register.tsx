@@ -40,21 +40,91 @@ const Register = ({ onToggleForm }: RegisterProps) => {
       return;
     }
 
+    // メールアドレスの形式チェック
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setError("有効なメールアドレスを入力してください");
+      return;
+    }
+
     setLoading(true);
 
     try {
-      const { error } = await signUp(email, password);
+      console.log("Starting user registration:", { email });
+
+      const { error, data } = await signUp(email, password);
+
+      console.log("Registration response:", {
+        hasError: !!error,
+        hasData: !!data,
+        errorMessage: error?.message,
+        errorCode: error?.name,
+        dataKeys: data ? Object.keys(data) : null,
+      });
+
       if (error) {
-        setError(error.message);
+        console.error("Registration error details:", {
+          message: error.message,
+          name: error.name,
+          stack: error.stack,
+        });
+
+        // エラーメッセージを日本語に変換
+        let errorMessage = error.message;
+
+        if (error.message.includes("User already registered")) {
+          errorMessage = "このメールアドレスは既に登録されています";
+        } else if (error.message.includes("Invalid email")) {
+          errorMessage = "無効なメールアドレスです";
+        } else if (error.message.includes("Password should be at least")) {
+          errorMessage = "パスワードは6文字以上必要です";
+        } else if (error.message.includes("Database error")) {
+          errorMessage =
+            "データベースエラーが発生しました。管理者にお問い合わせください";
+        } else if (error.message.includes("Email not confirmed")) {
+          errorMessage = "メールアドレスの確認が必要です";
+        } else if (error.message.includes("Signup is disabled")) {
+          errorMessage = "現在、新規登録は無効になっています";
+        } else if (error.message.includes("Email rate limit exceeded")) {
+          errorMessage =
+            "メール送信の制限に達しました。しばらく待ってから再試行してください";
+        } else if (error.message.includes("Unable to validate email address")) {
+          errorMessage = "メールアドレスの検証に失敗しました";
+        } else if (
+          error.message.includes("new row violates row-level security")
+        ) {
+          errorMessage = "アカウント作成時のセキュリティエラーが発生しました";
+        } else if (error.message.includes("permission denied")) {
+          errorMessage = "アクセス権限が不足しています";
+        } else if (error.message.includes("unique constraint")) {
+          errorMessage = "既に使用されているメールアドレスです";
+        } else if (
+          error.message.includes("function") &&
+          error.message.includes("does not exist")
+        ) {
+          errorMessage =
+            "データベース設定に問題があります。管理者にお問い合わせください";
+        }
+
+        setError(errorMessage);
       } else {
+        console.log("Registration successful");
         setSuccess("確認メールを送信しました。メールをご確認ください。");
         setEmail("");
         setPassword("");
         setConfirmPassword("");
       }
     } catch (err) {
-      setError("登録処理中にエラーが発生しました");
-      console.error(err);
+      console.error("Unexpected registration error:", err);
+      console.error("Error details:", {
+        message: err instanceof Error ? err.message : String(err),
+        name: err instanceof Error ? err.name : undefined,
+        stack: err instanceof Error ? err.stack : undefined,
+      });
+
+      setError(
+        "予期しないエラーが発生しました。時間をおいて再試行してください。"
+      );
     } finally {
       setLoading(false);
     }
