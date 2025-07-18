@@ -29,68 +29,187 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey);
 function extractWordPairsFromText(
   text: string
 ): Array<{ word: string; meaning: string }> {
-  console.log("Raw text from Gemini API:", text);
+  console.log("Extracting word pairs from text:", text);
 
-  // JSONっぽい部分を探す
-  const jsonPattern =
-    /\[\s*\{\s*"word"\s*:\s*"[^"]*"\s*,\s*"meaning"\s*:\s*"[^"]*"\s*\}.*\]/s;
+  try {
+    // まずJSONとして直接パースを試す
+    const directParse = JSON.parse(text);
+    if (
+      Array.isArray(directParse) &&
+      directParse.length > 0 &&
+      directParse[0].word &&
+      directParse[0].meaning
+    ) {
+      console.log("Successfully parsed as direct JSON:", directParse);
+      return directParse;
+    }
+  } catch (e) {
+    console.log("Not a direct JSON, trying other methods...");
+  }
+
+  // JSONっぽい部分を探す（より厳密なパターン）
+  const jsonPattern = /\[\s*\{[\s\S]*?\}\s*\]/;
   const jsonMatch = text.match(jsonPattern);
 
   if (jsonMatch) {
     try {
-      console.log("Found JSON-like pattern:", jsonMatch[0]);
-      return JSON.parse(jsonMatch[0]);
+      console.log("Found JSON pattern:", jsonMatch[0]);
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (Array.isArray(parsed)) {
+        console.log("Successfully parsed JSON pattern:", parsed);
+        return parsed;
+      }
     } catch (e) {
       console.error("Failed to parse extracted JSON pattern:", e);
     }
   }
 
-  // コードブロック内のJSONを探す (```json ... ```)
-  const codeBlockPattern = /```(?:json)?\s*(\[\s*\{[\s\S]*?\}\s*\])\s*```/;
+  // コードブロック内のJSONを探す
+  const codeBlockPattern = /```(?:json)?\s*(\[[\s\S]*?\])\s*```/;
   const codeBlockMatch = text.match(codeBlockPattern);
 
-  if (codeBlockMatch && codeBlockMatch[1]) {
+  if (codeBlockMatch) {
     try {
-      console.log("Found code block with JSON:", codeBlockMatch[1]);
-      return JSON.parse(codeBlockMatch[1]);
+      console.log("Found code block pattern:", codeBlockMatch[1]);
+      const parsed = JSON.parse(codeBlockMatch[1]);
+      if (Array.isArray(parsed)) {
+        console.log("Successfully parsed code block:", parsed);
+        return parsed;
+      }
     } catch (e) {
-      console.error("Failed to parse code block JSON:", e);
+      console.error("Failed to parse code block pattern:", e);
     }
   }
 
-  // テキスト全体をJSONとして解析
-  try {
-    console.log("Trying to parse entire text as JSON");
-    return JSON.parse(text);
-  } catch (e) {
-    console.error("Failed to parse text as JSON:", e);
+  // 正規表現で単語と意味のペアを抽出
+  const pairs: Array<{ word: string; meaning: string }> = [];
+
+  // パターン1: "word": "meaning" 形式
+  const pattern1 = /"word"\s*:\s*"([^"]+)"\s*,\s*"meaning"\s*:\s*"([^"]+)"/g;
+  let match;
+  while ((match = pattern1.exec(text)) !== null) {
+    pairs.push({
+      word: match[1].trim(),
+      meaning: match[2].trim(),
+    });
   }
 
-  // 正規表現で単語と意味のペアを抽出する最後の手段
+  if (pairs.length > 0) {
+    console.log("Extracted pairs using pattern 1:", pairs);
+    return pairs;
+  }
+
+  // パターン2: word - meaning 形式
+  const lines = text.split("\n");
+  for (const line of lines) {
+    const linePattern = /^([a-zA-Z]+(?:\s+[a-zA-Z]+)*)\s*[-:]\s*(.+)$/;
+    const lineMatch = line.trim().match(linePattern);
+    if (lineMatch) {
+      pairs.push({
+        word: lineMatch[1].trim(),
+        meaning: lineMatch[2].trim(),
+      });
+    }
+  }
+
+  console.log("Final extracted pairs:", pairs);
+  return pairs;
+}
+
+// 文章を単語・句読点単位で分割する関数
+function segmentText(
+  text: string
+): Array<{ content: string; position: number; isPunctuation: boolean }> {
+  console.log("Segmenting text:", text);
+  console.log("Text length:", text.length);
+  console.log("Text type:", typeof text);
+
+  const segments: Array<{
+    content: string;
+    position: number;
+    isPunctuation: boolean;
+  }> = [];
+
   try {
-    console.log("Attempting to extract word pairs using regex");
-    const pairs: Array<{ word: string; meaning: string }> = [];
-    const pairPattern = /"?(\w+)"?\s*[:：]\s*"?([^",]+)"?/g;
+    // 入力テキストの基本的な検証
+    if (!text || typeof text !== "string") {
+      console.error("Invalid text input:", text);
+      return [
+        {
+          content: String(text || ""),
+          position: 0,
+          isPunctuation: false,
+        },
+      ];
+    }
+
+    // 改行や余分な空白を正規化
+    const cleanText = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+    console.log("Cleaned text:", cleanText);
+
+    // 単語と句読点を分割する正規表現
+    // \b は単語境界、[.!?,:;'"()\[\]{}-] は句読点、\s+ は空白
+    const regex = /([a-zA-Z]+(?:'[a-zA-Z]+)*|[.!?,:;'"()\[\]{}\-]|\d+)/g;
+
+    let position = 0;
     let match;
 
-    while ((match = pairPattern.exec(text)) !== null) {
-      if (match[1] && match[2]) {
-        pairs.push({
-          word: match[1].trim(),
-          meaning: match[2].trim(),
-        });
+    console.log("Starting regex matching...");
+    while ((match = regex.exec(cleanText)) !== null) {
+      const content = match[1];
+      console.log("Found match:", content);
+
+      // 句読点かどうかを判定
+      const isPunctuation = /^[.!?,:;'"()\[\]{}\-]$/.test(content);
+      console.log("Is punctuation:", isPunctuation);
+
+      segments.push({
+        content: content,
+        position: position++,
+        isPunctuation: isPunctuation,
+      });
+    }
+
+    console.log("Regex matching completed, segments:", segments.length);
+
+    // セグメントが見つからない場合は、スペース区切りで分割
+    if (segments.length === 0) {
+      console.log("No segments found with regex, trying space split...");
+      const words = cleanText.split(/\s+/);
+      console.log("Words from space split:", words);
+
+      for (let i = 0; i < words.length; i++) {
+        const word = words[i];
+        if (word && word.trim()) {
+          console.log("Processing word:", word);
+          segments.push({
+            content: word.trim(),
+            position: i,
+            isPunctuation: /^[.!?,:;'"()\[\]{}\-]+$/.test(word.trim()),
+          });
+        }
       }
     }
 
-    if (pairs.length > 0) {
-      console.log("Extracted pairs using regex:", pairs);
-      return pairs;
-    }
-  } catch (e) {
-    console.error("Failed to extract using regex:", e);
-  }
+    console.log("Segmented text result:", segments);
+    return segments;
+  } catch (error) {
+    console.error("Error in segmentText:", error);
+    console.error(
+      "Error stack:",
+      error instanceof Error ? error.stack : undefined
+    );
 
-  return [];
+    // エラーが発生した場合は、文全体を1つのセグメントとして返す
+    const fallbackSegment = {
+      content: text?.trim() || "",
+      position: 0,
+      isPunctuation: false,
+    };
+
+    console.log("Returning fallback segment:", fallbackSegment);
+    return [fallbackSegment];
+  }
 }
 
 serve(async (req: Request) => {
@@ -124,6 +243,7 @@ serve(async (req: Request) => {
         hasImage: !!body.image,
         imageLength: body.image?.length,
         type: body.type,
+        mode: body.mode,
       });
     } catch (e) {
       console.error("Failed to parse request body:", e);
@@ -136,7 +256,7 @@ serve(async (req: Request) => {
       );
     }
 
-    const { image, type } = body;
+    const { image, type, mode } = body;
 
     // ベースパラメータのバリデーション
     if (!image) {
@@ -145,6 +265,21 @@ serve(async (req: Request) => {
         status: 400,
         headers: { "Content-Type": "application/json", ...corsHeaders },
       });
+    }
+
+    // modeのバリデーション (vocabulary | text)
+    const processingMode = mode || "vocabulary";
+    if (!["vocabulary", "text"].includes(processingMode)) {
+      console.error("Invalid processing mode:", processingMode);
+      return new Response(
+        JSON.stringify({
+          error: "Invalid processing mode. Use 'vocabulary' or 'text'",
+        }),
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json", ...corsHeaders },
+        }
+      );
     }
 
     // 画像のMIMEタイプを確認
@@ -203,59 +338,182 @@ serve(async (req: Request) => {
         : null,
     });
 
-    console.log("Initializing Gemini model...");
-    // Geminiモデルの取得（最新のモデル名を使用）
-    const model = genAI.getGenerativeModel({
-      model: "gemini-2.0-flash",
-    });
+    try {
+      console.log("Initializing Gemini model...");
+      // Geminiモデルの取得（最新のモデル名を使用）
+      const model = genAI.getGenerativeModel({
+        model: "gemini-2.0-flash",
+      });
 
-    console.log("Sending request to Gemini API...");
-    // Gemini APIに画像を送信（最新のAPI仕様に対応）
-    const prompt = `この画像から英単語とその日本語訳を抽出してください。必ずJSON形式の配列で返してください。形式: [{"word": "apple", "meaning": "りんご"}, {"word": "book", "meaning": "本"}]。見つからない場合は空の配列[]を返してください。`;
+      console.log("Sending request to Gemini API...");
+      console.log("Processing mode:", processingMode);
 
-    const imagePart = {
-      inlineData: {
-        data: image,
-        mimeType: mimeType,
-      },
-    };
+      // 処理モードに応じてプロンプトを変更
+      let prompt: string;
 
-    const result = await model.generateContent([prompt, imagePart]);
-
-    console.log("Received response from Gemini API");
-    // レスポンスを処理
-    const response = result.response;
-    const text = response.text();
-    console.log("Raw text from Gemini API:", text);
-
-    // テキストから単語ペアを抽出
-    const wordPairs = extractWordPairsFromText(text);
-    console.log("Extracted word pairs:", wordPairs);
-
-    // 結果を返す
-    return new Response(
-      JSON.stringify({
-        wordPairs,
-        rawText: text,
-      }),
-      {
-        headers: { "Content-Type": "application/json", ...corsHeaders },
-        status: 200,
+      if (processingMode === "vocabulary") {
+        prompt = `この画像から英単語とその日本語訳を抽出してください。必ずJSON形式の配列で返してください。形式: [{"word": "apple", "meaning": "りんご"}, {"word": "book", "meaning": "本"}]。見つからない場合は空の配列[]を返してください。`;
+      } else {
+        prompt = `この画像から英語の文章を読み取ってください。画像に写っているテキストをそのまま正確に文字起こししてください。改行や句読点もそのまま再現してください。JSON形式ではなく、プレーンテキストで返してください。`;
       }
-    );
+
+      console.log("Using prompt:", prompt.substring(0, 100) + "...");
+
+      const imagePart = {
+        inlineData: {
+          data: image,
+          mimeType: mimeType,
+        },
+      };
+
+      console.log("Image part prepared, calling Gemini API...");
+      const result = await model.generateContent([prompt, imagePart]);
+
+      console.log("Received response from Gemini API");
+      // レスポンスを処理
+      const response = result.response;
+      const text = response.text();
+      console.log("Raw text from Gemini API:", text);
+
+      // 処理モードに応じてレスポンスを分岐
+      if (processingMode === "vocabulary") {
+        // 単語帳モード: 単語ペアを抽出
+        console.log("Processing vocabulary mode...");
+        const wordPairs = extractWordPairsFromText(text);
+        console.log("Extracted word pairs:", wordPairs);
+
+        return new Response(
+          JSON.stringify({
+            wordPairs,
+            rawText: text,
+          }),
+          {
+            headers: { "Content-Type": "application/json", ...corsHeaders },
+            status: 200,
+          }
+        );
+      } else {
+        // 文章モード: テキストを分割
+        console.log("Processing text mode...");
+        console.log("Raw text for segmentation:", text);
+
+        try {
+          const segments = segmentText(text);
+          console.log(
+            "Segmentation completed, segments count:",
+            segments.length
+          );
+          console.log("Segments:", segments);
+
+          const texts = segments.map((segment, index) => ({
+            text_content: segment.content,
+            position: segment.position,
+            is_punctuation: segment.isPunctuation,
+          }));
+
+          console.log("Texts prepared:", texts.length, "items");
+          console.log("Final texts structure:", texts);
+
+          return new Response(
+            JSON.stringify({
+              texts,
+              rawText: text,
+            }),
+            {
+              headers: { "Content-Type": "application/json", ...corsHeaders },
+              status: 200,
+            }
+          );
+        } catch (segmentError) {
+          console.error("Error in text segmentation:", segmentError);
+          console.error("Segmentation error details:", {
+            message:
+              segmentError instanceof Error
+                ? segmentError.message
+                : String(segmentError),
+            stack:
+              segmentError instanceof Error ? segmentError.stack : undefined,
+            textLength: text.length,
+            textPreview: text.substring(0, 100),
+          });
+
+          // エラーが発生した場合は、文全体を1つのセグメントとして返す
+          const fallbackTexts = [
+            {
+              text_content: text.trim(),
+              position: 0,
+              is_punctuation: false,
+            },
+          ];
+
+          return new Response(
+            JSON.stringify({
+              texts: fallbackTexts,
+              rawText: text,
+            }),
+            {
+              headers: { "Content-Type": "application/json", ...corsHeaders },
+              status: 200,
+            }
+          );
+        }
+      }
+    } catch (geminiError: unknown) {
+      console.error("Gemini API Error:", geminiError);
+      console.error("Error details:", {
+        message:
+          geminiError instanceof Error
+            ? geminiError.message
+            : String(geminiError),
+        stack: geminiError instanceof Error ? geminiError.stack : undefined,
+      });
+
+      // Gemini APIのエラーを適切に処理
+      let errorMessage = "画像処理中にエラーが発生しました";
+      let statusCode = 500;
+
+      if (geminiError instanceof Error) {
+        if (geminiError.message.includes("quota")) {
+          errorMessage =
+            "API利用制限に達しました。しばらくしてから再試行してください。";
+          statusCode = 429;
+        } else if (geminiError.message.includes("invalid")) {
+          errorMessage =
+            "画像形式が無効です。JPEGまたはPNG形式の画像を使用してください。";
+          statusCode = 400;
+        } else if (geminiError.message.includes("timeout")) {
+          errorMessage =
+            "処理時間が長すぎます。より小さな画像で試してください。";
+          statusCode = 408;
+        }
+      }
+
+      return new Response(
+        JSON.stringify({
+          error: errorMessage,
+          details:
+            geminiError instanceof Error
+              ? geminiError.message
+              : String(geminiError),
+        }),
+        {
+          headers: { "Content-Type": "application/json", ...corsHeaders },
+          status: statusCode,
+        }
+      );
+    }
   } catch (error: unknown) {
-    console.error("Error processing request:", error);
+    console.error("Unexpected error:", error);
     console.error(
       "Error stack:",
-      error instanceof Error ? error.stack : "No stack trace"
+      error instanceof Error ? error.stack : undefined
     );
 
-    // エラーレスポンス
+    // 予期しないエラーの処理
     return new Response(
       JSON.stringify({
-        error: "Internal server error",
+        error: "サーバー内部エラーが発生しました",
         details: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined,
       }),
       {
         headers: { "Content-Type": "application/json", ...corsHeaders },

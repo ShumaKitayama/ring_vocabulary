@@ -6,25 +6,33 @@ import {
   Paper,
   LinearProgress,
   Alert,
+  Tabs,
+  Tab,
 } from "@mui/material";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import { supabase } from "../utils/supabase";
-import type { OcrResponse } from "../types";
+import type { OcrResponse, TextOcrResponse } from "../types";
 
 interface ImageUploaderProps {
   onOcrComplete: (data: OcrResponse) => void;
+  onTextOcrComplete?: (data: TextOcrResponse) => void;
   onError: (error: unknown) => void;
 }
 
 const ALLOWED_EXTENSIONS = ["jpg", "jpeg", "png"];
 const MAX_FILE_SIZE = 4 * 1024 * 1024; // 4MB
 
-const ImageUploader = ({ onOcrComplete, onError }: ImageUploaderProps) => {
+const ImageUploader = ({
+  onOcrComplete,
+  onTextOcrComplete,
+  onError,
+}: ImageUploaderProps) => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [selectedTab, setSelectedTab] = useState(0); // 0: 単語帳, 1: 穴埋め
 
   // ファイルが選択されたときの処理
   const onFileChange = useCallback(
@@ -79,10 +87,10 @@ const ImageUploader = ({ onOcrComplete, onError }: ImageUploaderProps) => {
     clearError();
   };
 
-  // OCR処理を実行
-  const handleUpload = async () => {
+  // OCR処理の実行
+  const handleOcr = async () => {
     if (!selectedFile) {
-      setErrorMessage("ファイルが選択されていません");
+      setErrorMessage("ファイルが選択されていません。");
       return;
     }
 
@@ -91,16 +99,33 @@ const ImageUploader = ({ onOcrComplete, onError }: ImageUploaderProps) => {
     clearError();
 
     try {
+      console.log("Starting OCR process...");
+      console.log(
+        "Selected file:",
+        selectedFile.name,
+        selectedFile.type,
+        selectedFile.size
+      );
+      console.log("Selected tab:", selectedTab);
+
       // ファイルをBase64エンコード
+      console.log("Starting Base64 encoding...");
       const base64 = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => {
           const result = reader.result as string;
           // data:image/jpeg;base64, の部分を削除
           const base64String = result.split(",")[1];
+          console.log(
+            "Base64 encoding completed. Length:",
+            base64String.length
+          );
           resolve(base64String);
         };
-        reader.onerror = reject;
+        reader.onerror = (error) => {
+          console.error("FileReader error:", error);
+          reject(error);
+        };
         reader.readAsDataURL(selectedFile);
       });
 
@@ -109,22 +134,48 @@ const ImageUploader = ({ onOcrComplete, onError }: ImageUploaderProps) => {
 
       // Supabase Edge FunctionでOCR処理
       console.log("Sending request to OCR function...");
-      const { data, error } = await supabase.functions.invoke<OcrResponse>(
-        "ocr",
-        {
-          body: {
-            image: base64,
-            type: selectedFile.type,
-          },
-        }
-      );
+      const mode = selectedTab === 0 ? "vocabulary" : "text";
+      console.log("OCR mode:", mode);
 
-      console.log("Received response from OCR function:", { data, error });
+      const requestBody = {
+        image: base64,
+        type: selectedFile.type,
+        mode,
+      };
+
+      console.log("Request body prepared (without image data):", {
+        type: requestBody.type,
+        mode: requestBody.mode,
+        imageLength: requestBody.image.length,
+      });
+
+      const startTime = Date.now();
+      const { data, error } = await supabase.functions.invoke<
+        OcrResponse | TextOcrResponse
+      >("ocr", {
+        body: requestBody,
+      });
+
+      const endTime = Date.now();
+      console.log("OCR function call completed in", endTime - startTime, "ms");
+      console.log("Received response from OCR function:", {
+        hasData: !!data,
+        hasError: !!error,
+        errorMessage: error?.message,
+        dataType: typeof data,
+        dataKeys: data ? Object.keys(data) : null,
+      });
+
       setUploadProgress(90);
 
       // エラー処理
       if (error) {
         console.error("OCR function error:", error);
+        console.error("Error details:", {
+          message: error.message,
+          name: error.name,
+          stack: error.stack,
+        });
 
         // より詳細なエラーメッセージを提供
         let errorMessage = "OCR処理に失敗しました。";
@@ -149,25 +200,60 @@ const ImageUploader = ({ onOcrComplete, onError }: ImageUploaderProps) => {
         throw new Error(errorMessage);
       }
 
+      // データの検証
+      if (!data) {
+        console.error("OCR response data is null or undefined");
+        throw new Error("OCR処理の結果が取得できませんでした");
+      }
+
+      console.log("Processing OCR result for tab:", selectedTab);
+      console.log("OCR result data:", data);
+
       // 処理結果にプレビュー画像のURLを追加
-      if (data) {
-        data.imageUrl = preview || undefined;
-        onOcrComplete(data);
+      if (selectedTab === 0) {
+        // 単語帳モード
+        console.log("Processing vocabulary mode result");
+        const ocrData = data as OcrResponse;
+        console.log("Word pairs count:", ocrData.wordPairs?.length || 0);
+
+        ocrData.imageUrl = preview || undefined;
+        onOcrComplete(ocrData);
       } else {
-        throw new Error("OCR処理に失敗しました");
+        // 穴埋めモード
+        console.log("Processing text mode result");
+        const textData = data as TextOcrResponse;
+        console.log("Texts count:", textData.texts?.length || 0);
+        console.log("Raw text length:", textData.rawText?.length || 0);
+
+        textData.imageUrl = preview || undefined;
+        if (onTextOcrComplete) {
+          console.log("Calling onTextOcrComplete callback");
+          onTextOcrComplete(textData);
+        } else {
+          console.error("onTextOcrComplete callback is not available");
+          throw new Error("穴埋めモードのコールバック関数が設定されていません");
+        }
       }
 
       setUploadProgress(100);
+      console.log("OCR process completed successfully");
     } catch (error) {
       console.error("OCR処理エラー:", error);
-      setErrorMessage(
+      console.error(
+        "Error stack:",
+        error instanceof Error ? error.stack : undefined
+      );
+
+      const errorMessage =
         error instanceof Error
           ? error.message
-          : "OCR処理中にエラーが発生しました"
-      );
+          : "OCR処理中にエラーが発生しました";
+
+      setErrorMessage(errorMessage);
       onError(error);
     } finally {
       setLoading(false);
+      console.log("OCR process finished, loading set to false");
     }
   };
 
@@ -219,6 +305,18 @@ const ImageUploader = ({ onOcrComplete, onError }: ImageUploaderProps) => {
 
   return (
     <Box sx={{ width: "100%", mt: 3 }}>
+      {/* タブ */}
+      <Paper elevation={1} sx={{ mb: 2 }}>
+        <Tabs
+          value={selectedTab}
+          onChange={(_, newValue) => setSelectedTab(newValue)}
+          variant="fullWidth"
+        >
+          <Tab label="単語帳作成" />
+          <Tab label="穴埋め問題作成" />
+        </Tabs>
+      </Paper>
+
       <Paper
         elevation={3}
         sx={{
@@ -289,6 +387,11 @@ const ImageUploader = ({ onOcrComplete, onError }: ImageUploaderProps) => {
               <Typography variant="h6" gutterBottom>
                 ファイルを選択またはドラッグ&ドロップ
               </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                {selectedTab === 0
+                  ? "英単語とその日本語訳が含まれる画像"
+                  : "英語の文章が含まれる画像"}
+              </Typography>
               <Typography variant="body2" color="text.secondary">
                 JPG/PNG（最大4MB）
               </Typography>
@@ -306,7 +409,7 @@ const ImageUploader = ({ onOcrComplete, onError }: ImageUploaderProps) => {
             <Button
               variant="contained"
               color="primary"
-              onClick={handleUpload}
+              onClick={handleOcr}
               disabled={loading || !selectedFile}
             >
               処理開始

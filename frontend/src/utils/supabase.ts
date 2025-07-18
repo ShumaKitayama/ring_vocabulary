@@ -24,6 +24,10 @@ export const TABLES = {
   USER_PROFILES: "user_profiles",
   WORDBOOKS: "wordbooks",
   WORDBOOK_WORDS: "wordbook_words",
+  FILL_IN_SETS: "fill_in_sets",
+  FILL_IN_TEXTS: "fill_in_texts",
+  FILL_IN_PROBLEMS: "fill_in_problems",
+  USER_FILL_IN_PROGRESS: "user_fill_in_progress",
 };
 
 // Supabaseのデータ型定義
@@ -31,6 +35,7 @@ export interface WordRecord {
   id: number;
   word: string;
   meaning: string;
+  pronunciation?: string; // IPA表記による発音記号
   created_at: string;
 }
 

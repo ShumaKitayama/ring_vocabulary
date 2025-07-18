@@ -1,14 +1,26 @@
 import { useState, useEffect } from "react";
-import { Box, Typography, Button, Paper, Chip } from "@mui/material";
+import {
+  Box,
+  Typography,
+  Button,
+  Paper,
+  Chip,
+  IconButton,
+} from "@mui/material";
 import {
   ArrowBack as ArrowBackIcon,
   ArrowForward as ArrowForwardIcon,
   Refresh as RefreshIcon,
   Check as CheckIcon,
+  VolumeUp as VolumeUpIcon,
 } from "@mui/icons-material";
 import type { WordPair } from "../types";
 import { useUserWords } from "../hooks/useUserWords";
 import { addDays } from "../utils/dateUtils";
+import {
+  speakEnglishWord,
+  isSpeechSynthesisSupported,
+} from "../utils/speechSynthesis";
 
 interface FlashcardProps {
   wordPairs: WordPair[];
@@ -23,6 +35,7 @@ const Flashcard = ({ wordPairs, onExit }: FlashcardProps) => {
     ...wordPairs,
   ]);
   const [masteredWords, setMasteredWords] = useState<Set<string>>(new Set());
+  const [isSpeaking, setIsSpeaking] = useState(false);
 
   // 単語状態管理フック
   const { updateWordStatus, error } = useUserWords();
@@ -70,6 +83,26 @@ const Flashcard = ({ wordPairs, onExit }: FlashcardProps) => {
   // 単語と意味を表示/非表示
   const toggleMeaning = () => {
     setShowMeaning(!showMeaning);
+  };
+
+  // 単語を読み上げる
+  const handleSpeak = async () => {
+    if (!isSpeechSynthesisSupported()) {
+      alert("お使いのブラウザは音声合成機能をサポートしていません");
+      return;
+    }
+
+    const currentPair = shuffledPairs[currentIndex];
+    if (!currentPair?.word) return;
+
+    setIsSpeaking(true);
+    try {
+      await speakEnglishWord(currentPair.word);
+    } catch (error) {
+      console.error("音声読み上げエラー:", error);
+    } finally {
+      setIsSpeaking(false);
+    }
   };
 
   // 単語を「覚えた」としてマーク
@@ -197,16 +230,49 @@ const Flashcard = ({ wordPairs, onExit }: FlashcardProps) => {
           />
         )}
 
-        <Typography
-          variant="h4"
+        <Box
           sx={{
-            fontWeight: "bold",
-            mb: showMeaning ? 2 : 0,
-            textAlign: "center",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 1,
           }}
         >
-          {currentPair.word}
-        </Typography>
+          <Typography
+            variant="h4"
+            sx={{
+              fontWeight: "bold",
+              textAlign: "center",
+            }}
+          >
+            {currentPair.word}
+          </Typography>
+
+          {isSpeechSynthesisSupported() && (
+            <IconButton
+              onClick={handleSpeak}
+              disabled={isSpeaking}
+              size="small"
+              sx={{ ml: 1 }}
+            >
+              <VolumeUpIcon color={isSpeaking ? "disabled" : "primary"} />
+            </IconButton>
+          )}
+        </Box>
+
+        {currentPair.pronunciation && (
+          <Typography
+            variant="body1"
+            sx={{
+              mt: 1,
+              textAlign: "center",
+              fontStyle: "italic",
+              color: "text.secondary",
+            }}
+          >
+            {currentPair.pronunciation}
+          </Typography>
+        )}
 
         {showMeaning && (
           <Typography

@@ -18,19 +18,31 @@ import ImageUploader from "../components/ImageUploader";
 import WordEditForm from "../components/WordEditForm";
 import WordbookList from "../components/WordbookList";
 import Flashcard from "../components/Flashcard";
+import FillInSetList from "../components/FillInSetList";
+import FillInCreator from "../components/FillInCreator";
+import FillInStudy from "../components/FillInStudy";
 import { useUserWords } from "../hooks/useUserWords";
-import type { OcrResponse, WordPair, ExtendedWordPair } from "../types";
+import type {
+  OcrResponse,
+  WordPair,
+  ExtendedWordPair,
+  TextOcrResponse,
+  FillInSet,
+} from "../types";
 
 enum AppState {
   HOME, // ホーム画面（タブ選択）
   EDIT, // 単語編集画面
   STUDY, // 学習画面
   REVIEW, // 復習画面
+  FILL_IN_CREATE, // 穴埋め問題作成画面
+  FILL_IN_STUDY, // 穴埋め問題学習画面
 }
 
 enum HomeTab {
   CREATE, // 新規作成タブ
   LEARN, // 学習タブ
+  FILL_IN, // 穴埋めタブ
 }
 
 const Home = () => {
@@ -40,6 +52,11 @@ const Home = () => {
   const [error, setError] = useState<string | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // 穴埋め関連の状態
+  const [selectedFillInSet, setSelectedFillInSet] = useState<FillInSet | null>(
+    null
+  );
 
   // 単語データフック
   const { loadWords } = useUserWords();
@@ -51,6 +68,12 @@ const Home = () => {
       setImageUrl(result.imageUrl);
     }
     setAppState(AppState.EDIT);
+  };
+
+  // 文章OCR完了時の処理
+  const handleTextOcrComplete = (result: TextOcrResponse) => {
+    // 現在は何もしない（FillInCreatorで直接処理される）
+    console.log("Text OCR completed:", result);
   };
 
   // エラー発生時の処理
@@ -146,6 +169,25 @@ const Home = () => {
     setAppState(AppState.HOME);
     setWordPairs([]);
     setImageUrl(null);
+    setSelectedFillInSet(null);
+  };
+
+  // 穴埋めセット選択時の処理
+  const handleSelectFillInSet = (set: FillInSet) => {
+    setSelectedFillInSet(set);
+    setAppState(AppState.FILL_IN_CREATE);
+  };
+
+  // 穴埋めセット作成時の処理
+  const handleCreateFillInSet = (set: FillInSet) => {
+    setSelectedFillInSet(set);
+    setAppState(AppState.FILL_IN_CREATE);
+  };
+
+  // 穴埋め学習開始時の処理
+  const handleStartFillInStudy = (set: FillInSet) => {
+    setSelectedFillInSet(set);
+    setAppState(AppState.FILL_IN_STUDY);
   };
 
   // スナックバーを閉じる
@@ -194,6 +236,7 @@ const Home = () => {
               >
                 <Tab label="新規作成" value={HomeTab.CREATE} />
                 <Tab label="学習・復習" value={HomeTab.LEARN} />
+                <Tab label="穴埋め問題" value={HomeTab.FILL_IN} />
               </Tabs>
 
               {homeTab === HomeTab.CREATE && (
@@ -210,6 +253,7 @@ const Home = () => {
                   </Typography>
                   <ImageUploader
                     onOcrComplete={handleOcrComplete}
+                    onTextOcrComplete={handleTextOcrComplete}
                     onError={handleError}
                   />
                 </Box>
@@ -247,6 +291,28 @@ const Home = () => {
                   <WordbookList onSelectWordbook={handleSelectWordbook} />
                 </Box>
               )}
+
+              {homeTab === HomeTab.FILL_IN && (
+                <Box>
+                  <Typography variant="h6" gutterBottom>
+                    穴埋め問題
+                  </Typography>
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{ mb: 3 }}
+                  >
+                    画像から文章を読み取って穴埋め問題を作成し、学習します
+                  </Typography>
+
+                  {/* 穴埋めセット一覧 */}
+                  <FillInSetList
+                    onSelectSet={handleSelectFillInSet}
+                    onCreateSet={handleCreateFillInSet}
+                    onStudySet={handleStartFillInStudy}
+                  />
+                </Box>
+              )}
             </Box>
           )}
 
@@ -278,6 +344,20 @@ const Home = () => {
               </Button>
               <Flashcard wordPairs={wordPairs} onExit={handleStudyExit} />
             </Box>
+          )}
+
+          {appState === AppState.FILL_IN_CREATE && selectedFillInSet && (
+            <FillInCreator
+              selectedSet={selectedFillInSet}
+              onBack={handleBackToHome}
+            />
+          )}
+
+          {appState === AppState.FILL_IN_STUDY && selectedFillInSet && (
+            <FillInStudy
+              selectedSet={selectedFillInSet}
+              onBack={handleBackToHome}
+            />
           )}
 
           <Snackbar

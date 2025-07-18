@@ -30,6 +30,7 @@ const WordEditForm = ({
   const [wordPairs, setWordPairs] = useState<WordPair[]>([]);
   const [newWord, setNewWord] = useState("");
   const [newMeaning, setNewMeaning] = useState("");
+  const [newPronunciation, setNewPronunciation] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -63,6 +64,12 @@ const WordEditForm = ({
     setWordPairs(updated);
   };
 
+  const handlePronunciationChange = (index: number, value: string) => {
+    const updated = [...wordPairs];
+    updated[index] = { ...updated[index], pronunciation: value };
+    setWordPairs(updated);
+  };
+
   const handleDelete = (index: number) => {
     const updated = wordPairs.filter((_, i) => i !== index);
     setWordPairs(updated);
@@ -73,9 +80,17 @@ const WordEditForm = ({
       return;
     }
 
-    setWordPairs([...wordPairs, { word: newWord, meaning: newMeaning }]);
+    setWordPairs([
+      ...wordPairs,
+      {
+        word: newWord,
+        meaning: newMeaning,
+        pronunciation: newPronunciation.trim() || undefined,
+      },
+    ]);
     setNewWord("");
     setNewMeaning("");
+    setNewPronunciation("");
   };
 
   const handleSave = async () => {
@@ -133,6 +148,7 @@ const WordEditForm = ({
         wordMap.set(key, {
           word: pair.word.trim(),
           meaning: pair.meaning.trim(),
+          pronunciation: pair.pronunciation?.trim() || undefined,
         });
       }
     });
@@ -164,38 +180,66 @@ const WordEditForm = ({
         <Box
           sx={{
             display: "flex",
-            flexDirection: { xs: "column", sm: "row" },
+            flexDirection: "column",
             gap: 2,
           }}
         >
-          <TextField
-            fullWidth
-            label="単語"
-            value={newWord}
-            onChange={(e) => setNewWord(e.target.value)}
-            size="small"
-            sx={{ flexGrow: 1 }}
-          />
-
-          <TextField
-            fullWidth
-            label="意味"
-            value={newMeaning}
-            onChange={(e) => setNewMeaning(e.target.value)}
-            size="small"
-            sx={{ flexGrow: 1 }}
-          />
-
-          <Button
-            variant="contained"
-            color="primary"
-            startIcon={<AddIcon />}
-            onClick={handleAddNewPair}
-            disabled={newWord.trim() === "" || newMeaning.trim() === ""}
-            sx={{ minWidth: "100px" }}
+          <Box
+            sx={{
+              display: "flex",
+              flexDirection: { xs: "column", sm: "row" },
+              gap: 2,
+            }}
           >
-            追加
-          </Button>
+            <TextField
+              fullWidth
+              label="単語"
+              value={newWord}
+              onChange={(e) => setNewWord(e.target.value)}
+              size="small"
+              sx={{ flexGrow: 1 }}
+            />
+
+            <TextField
+              fullWidth
+              label="意味"
+              value={newMeaning}
+              onChange={(e) => setNewMeaning(e.target.value)}
+              size="small"
+              sx={{ flexGrow: 1 }}
+            />
+          </Box>
+
+          <Box
+            sx={{
+              display: "flex",
+              flexDirection: { xs: "column", sm: "row" },
+              gap: 2,
+              alignItems: "flex-end",
+            }}
+          >
+            <TextField
+              fullWidth
+              label="発音記号（任意）"
+              placeholder="例: /prəˌnʌnsiˈeɪʃən/"
+              value={newPronunciation}
+              onChange={(e) => setNewPronunciation(e.target.value)}
+              size="small"
+              sx={{ flexGrow: 1 }}
+              helperText="IPA表記で入力してください"
+            />
+
+            <Button
+              variant="contained"
+              color="primary"
+              startIcon={<AddIcon />}
+              onClick={handleAddNewPair}
+              disabled={newWord.trim() === "" || newMeaning.trim() === ""}
+              sx={{ minWidth: "100px" }}
+            >
+              追加
+            </Button>
+          </Box>
         </Box>
       </Paper>
 
@@ -248,36 +292,58 @@ const WordEditForm = ({
                   <Box
                     sx={{
                       display: "flex",
+                      flexDirection: "column",
                       width: "100%",
                       gap: 2,
-                      alignItems: "center",
                     }}
                   >
-                    <TextField
-                      fullWidth
-                      label="単語"
-                      value={pair.word}
-                      onChange={(e) => handleWordChange(index, e.target.value)}
-                      size="small"
-                    />
+                    <Box
+                      sx={{
+                        display: "flex",
+                        gap: 2,
+                        alignItems: "center",
+                      }}
+                    >
+                      <TextField
+                        fullWidth
+                        label="単語"
+                        value={pair.word}
+                        onChange={(e) =>
+                          handleWordChange(index, e.target.value)
+                        }
+                        size="small"
+                      />
+
+                      <TextField
+                        fullWidth
+                        label="意味"
+                        value={pair.meaning}
+                        onChange={(e) =>
+                          handleMeaningChange(index, e.target.value)
+                        }
+                        size="small"
+                      />
+
+                      <IconButton
+                        color="error"
+                        onClick={() => handleDelete(index)}
+                        size="small"
+                      >
+                        <DeleteIcon />
+                      </IconButton>
+                    </Box>
 
                     <TextField
                       fullWidth
-                      label="意味"
-                      value={pair.meaning}
+                      label="発音記号（任意）"
+                      placeholder="例: /prəˌnʌnsiˈeɪʃən/"
+                      value={pair.pronunciation || ""}
                       onChange={(e) =>
-                        handleMeaningChange(index, e.target.value)
+                        handlePronunciationChange(index, e.target.value)
                       }
                       size="small"
+                      sx={{ mr: 5 }} // 削除ボタンの幅分右マージンを追加
                     />
-
-                    <IconButton
-                      color="error"
-                      onClick={() => handleDelete(index)}
-                      size="small"
-                    >
-                      <DeleteIcon />
-                    </IconButton>
                   </Box>
                 </ListItem>
               ))}

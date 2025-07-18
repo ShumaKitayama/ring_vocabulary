@@ -74,7 +74,11 @@ export const useUserWords = (): UseUserWordsReturn => {
           // 新しい単語を挿入
           const { data: newWord, error: insertError } = await supabase
             .from(TABLES.WORDS)
-            .insert({ word: pair.word, meaning: pair.meaning })
+            .insert({
+              word: pair.word,
+              meaning: pair.meaning,
+              pronunciation: pair.pronunciation || null,
+            })
             .select("id")
             .single();
 
@@ -189,7 +193,8 @@ export const useUserWords = (): UseUserWordsReturn => {
           words!inner (
             id,
             word,
-            meaning
+            meaning,
+            pronunciation
           )
         `
           )
@@ -253,6 +258,7 @@ export const useUserWords = (): UseUserWordsReturn => {
               return {
                 word: wordsData.word,
                 meaning: wordsData.meaning,
+                pronunciation: wordsData.pronunciation || undefined,
                 id: wordsData.id.toString(),
                 user_word_id: item.id.toString(),
                 mastered: item.mastered,
