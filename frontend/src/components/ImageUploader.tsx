@@ -8,6 +8,9 @@ import {
   Alert,
   Tabs,
   Tab,
+  Card,
+  CardContent,
+  Chip,
 } from "@mui/material";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import { supabase } from "../utils/supabase";
@@ -99,27 +102,13 @@ const ImageUploader = ({
     clearError();
 
     try {
-      console.log("Starting OCR process...");
-      console.log(
-        "Selected file:",
-        selectedFile.name,
-        selectedFile.type,
-        selectedFile.size
-      );
-      console.log("Selected tab:", selectedTab);
-
       // ファイルをBase64エンコード
-      console.log("Starting Base64 encoding...");
       const base64 = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => {
           const result = reader.result as string;
           // data:image/jpeg;base64, の部分を削除
           const base64String = result.split(",")[1];
-          console.log(
-            "Base64 encoding completed. Length:",
-            base64String.length
-          );
           resolve(base64String);
         };
         reader.onerror = (error) => {
@@ -129,13 +118,10 @@ const ImageUploader = ({
         reader.readAsDataURL(selectedFile);
       });
 
-      console.log("Base64 encoded image length:", base64.length);
       setUploadProgress(30);
 
       // Supabase Edge FunctionでOCR処理
-      console.log("Sending request to OCR function...");
       const mode = selectedTab === 0 ? "vocabulary" : "text";
-      console.log("OCR mode:", mode);
 
       const requestBody = {
         image: base64,
@@ -143,27 +129,10 @@ const ImageUploader = ({
         mode,
       };
 
-      console.log("Request body prepared (without image data):", {
-        type: requestBody.type,
-        mode: requestBody.mode,
-        imageLength: requestBody.image.length,
-      });
-
-      const startTime = Date.now();
       const { data, error } = await supabase.functions.invoke<
         OcrResponse | TextOcrResponse
       >("ocr", {
         body: requestBody,
-      });
-
-      const endTime = Date.now();
-      console.log("OCR function call completed in", endTime - startTime, "ms");
-      console.log("Received response from OCR function:", {
-        hasData: !!data,
-        hasError: !!error,
-        errorMessage: error?.message,
-        dataType: typeof data,
-        dataKeys: data ? Object.keys(data) : null,
       });
 
       setUploadProgress(90);
@@ -206,28 +175,19 @@ const ImageUploader = ({
         throw new Error("OCR処理の結果が取得できませんでした");
       }
 
-      console.log("Processing OCR result for tab:", selectedTab);
-      console.log("OCR result data:", data);
-
       // 処理結果にプレビュー画像のURLを追加
       if (selectedTab === 0) {
         // 単語帳モード
-        console.log("Processing vocabulary mode result");
         const ocrData = data as OcrResponse;
-        console.log("Word pairs count:", ocrData.wordPairs?.length || 0);
 
         ocrData.imageUrl = preview || undefined;
         onOcrComplete(ocrData);
       } else {
         // 穴埋めモード
-        console.log("Processing text mode result");
         const textData = data as TextOcrResponse;
-        console.log("Texts count:", textData.texts?.length || 0);
-        console.log("Raw text length:", textData.rawText?.length || 0);
 
         textData.imageUrl = preview || undefined;
         if (onTextOcrComplete) {
-          console.log("Calling onTextOcrComplete callback");
           onTextOcrComplete(textData);
         } else {
           console.error("onTextOcrComplete callback is not available");
@@ -236,13 +196,8 @@ const ImageUploader = ({
       }
 
       setUploadProgress(100);
-      console.log("OCR process completed successfully");
     } catch (error) {
       console.error("OCR処理エラー:", error);
-      console.error(
-        "Error stack:",
-        error instanceof Error ? error.stack : undefined
-      );
 
       const errorMessage =
         error instanceof Error
@@ -253,7 +208,6 @@ const ImageUploader = ({
       onError(error);
     } finally {
       setLoading(false);
-      console.log("OCR process finished, loading set to false");
     }
   };
 
@@ -317,106 +271,151 @@ const ImageUploader = ({
         </Tabs>
       </Paper>
 
-      <Paper
-        elevation={3}
-        sx={{
-          p: 3,
-          border: "2px dashed #ccc",
-          borderRadius: 2,
-          textAlign: "center",
-          cursor: "pointer",
-          transition: "border-color 0.3s",
-          "&:hover": {
-            borderColor: "primary.main",
-          },
-        }}
-        onDragOver={handleDragOver}
-        onDrop={handleDrop}
-      >
-        {errorMessage && (
-          <Alert severity="error" sx={{ mb: 2 }} onClose={clearError}>
-            {errorMessage}
-          </Alert>
-        )}
-
-        {loading && (
-          <Box sx={{ width: "100%", mb: 2 }}>
-            <LinearProgress
-              variant="determinate"
-              value={uploadProgress}
-              sx={{ height: 10, borderRadius: 5 }}
-            />
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-              OCR処理中... {uploadProgress}%
-            </Typography>
-          </Box>
-        )}
-
-        {preview ? (
-          // プレビュー表示
-          <Box sx={{ mb: 2 }}>
-            <img
-              src={preview}
-              alt="Preview"
-              style={{
-                maxWidth: "100%",
-                maxHeight: "250px",
-                borderRadius: "8px",
+      {/* 穴埋めタブの準備中表示 */}
+      {selectedTab === 1 ? (
+        <Card
+          sx={{
+            textAlign: "center",
+            py: 8,
+            bgcolor: "grey.50",
+            border: "2px dashed",
+            borderColor: "grey.300",
+          }}
+        >
+          <CardContent>
+            <Typography
+              variant="h4"
+              sx={{
+                mb: 2,
+                color: "warning.main",
+                fontWeight: "bold",
               }}
-            />
-            <Typography variant="body2" sx={{ mt: 1 }}>
-              {selectedFile?.name} (
-              {selectedFile ? Math.round(selectedFile.size / 1024) : 0} KB)
-            </Typography>
-          </Box>
-        ) : (
-          // ファイル選択領域
-          <Box sx={{ py: 5 }}>
-            <input
-              type="file"
-              accept=".jpg,.jpeg,.png"
-              onChange={onFileChange}
-              style={{ display: "none" }}
-              id="upload-button"
-              disabled={loading}
-            />
-            <label htmlFor="upload-button">
-              <CloudUploadIcon
-                sx={{ fontSize: 60, color: "primary.main", mb: 2 }}
-              />
-              <Typography variant="h6" gutterBottom>
-                ファイルを選択またはドラッグ&ドロップ
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                {selectedTab === 0
-                  ? "英単語とその日本語訳が含まれる画像"
-                  : "英語の文章が含まれる画像"}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                JPG/PNG（最大4MB）
-              </Typography>
-            </label>
-          </Box>
-        )}
-
-        {preview && (
-          <Box
-            sx={{ mt: 2, display: "flex", justifyContent: "center", gap: 2 }}
-          >
-            <Button variant="outlined" onClick={resetFile} disabled={loading}>
-              リセット
-            </Button>
-            <Button
-              variant="contained"
-              color="primary"
-              onClick={handleOcr}
-              disabled={loading || !selectedFile}
             >
-              処理開始
-            </Button>
-          </Box>
-        )}
-      </Paper>
+              🚧 準備中 🚧
+            </Typography>
+            <Typography variant="h6" color="text.secondary" gutterBottom>
+              穴埋め問題作成機能は現在開発中です
+            </Typography>
+            <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
+              より良い学習体験を提供するため、機能の改善を行っています。
+              <br />
+              しばらくお待ちください。
+            </Typography>
+            <Chip
+              label="Coming Soon"
+              color="warning"
+              variant="outlined"
+              size="medium"
+              sx={{ fontSize: "14px", py: 1, px: 2 }}
+            />
+          </CardContent>
+        </Card>
+      ) : (
+        <Paper
+          elevation={3}
+          sx={{
+            p: 3,
+            border: "2px dashed #ccc",
+            borderRadius: 2,
+            textAlign: "center",
+            cursor: "pointer",
+            transition: "border-color 0.3s",
+            "&:hover": {
+              borderColor: "primary.main",
+            },
+          }}
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
+        >
+          {errorMessage && (
+            <Alert severity="error" sx={{ mb: 2 }} onClose={clearError}>
+              {errorMessage}
+            </Alert>
+          )}
+
+          {loading && (
+            <Box sx={{ width: "100%", mb: 2 }}>
+              <LinearProgress
+                variant="determinate"
+                value={uploadProgress}
+                sx={{ height: 10, borderRadius: 5 }}
+              />
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                OCR処理中... {uploadProgress}%
+              </Typography>
+            </Box>
+          )}
+
+          {preview ? (
+            // プレビュー表示
+            <Box sx={{ mb: 2 }}>
+              <img
+                src={preview}
+                alt="Preview"
+                style={{
+                  maxWidth: "100%",
+                  maxHeight: "250px",
+                  borderRadius: "8px",
+                }}
+              />
+              <Typography variant="body2" sx={{ mt: 1 }}>
+                {selectedFile?.name} (
+                {selectedFile ? Math.round(selectedFile.size / 1024) : 0} KB)
+              </Typography>
+            </Box>
+          ) : (
+            // ファイル選択領域
+            <Box sx={{ py: 5 }}>
+              <input
+                type="file"
+                accept=".jpg,.jpeg,.png"
+                onChange={onFileChange}
+                style={{ display: "none" }}
+                id="upload-button"
+                disabled={loading}
+              />
+              <label htmlFor="upload-button">
+                <CloudUploadIcon
+                  sx={{ fontSize: 60, color: "primary.main", mb: 2 }}
+                />
+                <Typography variant="h6" gutterBottom>
+                  ファイルを選択またはドラッグ&ドロップ
+                </Typography>
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                  sx={{ mb: 1 }}
+                >
+                  {selectedTab === 0
+                    ? "英単語とその日本語訳が含まれる画像"
+                    : "英語の文章が含まれる画像"}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  JPG/PNG（最大4MB）
+                </Typography>
+              </label>
+            </Box>
+          )}
+
+          {preview && (
+            <Box
+              sx={{ mt: 2, display: "flex", justifyContent: "center", gap: 2 }}
+            >
+              <Button variant="outlined" onClick={resetFile} disabled={loading}>
+                リセット
+              </Button>
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={handleOcr}
+                disabled={loading || !selectedFile}
+              >
+                処理開始
+              </Button>
+            </Box>
+          )}
+        </Paper>
+      )}
     </Box>
   );
 };

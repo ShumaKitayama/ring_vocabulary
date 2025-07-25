@@ -12,6 +12,7 @@ interface UseUserWordsReturn {
     mastered: boolean,
     nextReviewDate?: string | null
   ) => Promise<void>;
+  recordStudySession: (wordbookId: string) => Promise<void>;
   createWordbook: (title: string, description?: string) => Promise<string>;
   mergeWordbooks: (sourceIds: string[], targetId: string) => Promise<void>;
   deleteWordbook: (wordbookId: string) => Promise<void>;
@@ -54,22 +55,38 @@ export const useUserWords = (): UseUserWordsReturn => {
       }
 
       const wordbookId = newWordbook.id;
-      console.log("単語帳作成成功 - wordbookId:", wordbookId, "title:", title);
 
       // 各単語を保存
-      console.log("保存する単語数:", wordPairs.length);
       for (const pair of wordPairs) {
-        console.log("単語を処理中:", pair.word, pair.meaning);
-        // 既存の単語をチェック
+        // 既存の単語をチェック（発音記号も含める）
         const { data: existingWords } = await supabase
           .from(TABLES.WORDS)
-          .select("id")
+          .select("id, pronunciation")
           .eq("word", pair.word)
           .eq("meaning", pair.meaning);
 
         let wordId: number;
         if (existingWords && existingWords.length > 0) {
-          wordId = existingWords[0].id;
+          const existingWord = existingWords[0];
+          wordId = existingWord.id;
+
+          // 既存の単語で発音記号が空または異なる場合は更新
+          if (
+            pair.pronunciation &&
+            (!existingWord.pronunciation ||
+              existingWord.pronunciation !== pair.pronunciation)
+          ) {
+            const { error: updateError } = await supabase
+              .from(TABLES.WORDS)
+              .update({
+                pronunciation: pair.pronunciation,
+              })
+              .eq("id", wordId);
+
+            if (updateError) {
+              console.error("発音記号の更新エラー:", updateError);
+            }
+          }
         } else {
           // 新しい単語を挿入
           const { data: newWord, error: insertError } = await supabase
@@ -116,13 +133,6 @@ export const useUserWords = (): UseUserWordsReturn => {
 
           if (userWordError) {
             console.error("user_wordsの挿入エラー:", userWordError);
-          } else {
-            console.log(
-              "user_wordsレコード作成成功 - wordId:",
-              wordId,
-              "wordbookId:",
-              wordbookId
-            );
           }
         }
       }
@@ -152,35 +162,6 @@ export const useUserWords = (): UseUserWordsReturn => {
       setError(null);
 
       try {
-        console.log(
-          "loadWords開始 - wordbookId:",
-          wordbookId,
-          "userId:",
-          user.id
-        );
-
-        // 先にuser_wordsテーブルの状況を確認
-        if (wordbookId) {
-          const { data: checkData, error: checkError } = await supabase
-            .from(TABLES.USER_WORDS)
-            .select("*")
-            .eq("user_id", user.id)
-            .eq("wordbook_id", parseInt(wordbookId));
-
-          console.log("デバッグ: user_wordsテーブルの該当データ:", checkData);
-          if (checkError) {
-            console.error(
-              "デバッグ: user_wordsテーブルチェックエラー:",
-              checkError
-            );
-          }
-
-          if (!checkData || checkData.length === 0) {
-            console.log("該当するuser_wordsレコードが見つかりません");
-            return [];
-          }
-        }
-
         let query = supabase
           .from(TABLES.USER_WORDS)
           .select(
@@ -189,6 +170,7 @@ export const useUserWords = (): UseUserWordsReturn => {
           word_id,
           mastered,
           review_date,
+          last_studied_at,
           wordbook_id,
           words!inner (
             id,
@@ -203,7 +185,6 @@ export const useUserWords = (): UseUserWordsReturn => {
         if (wordbookId) {
           // 特定の単語帳の単語を取得
           const parsedId = parseInt(wordbookId);
-          console.log("フィルター適用: wordbookId =", parsedId);
           query = query.eq("wordbook_id", parsedId);
         } else {
           // 復習対象の単語を取得（今日以前の復習日または未設定）
@@ -218,57 +199,63 @@ export const useUserWords = (): UseUserWordsReturn => {
           throw fetchError;
         }
 
-        console.log("loadWords - 生データ:", data);
-        console.log("loadWords - データ件数:", data?.length || 0);
-
         if (!data || data.length === 0) {
-          console.log("データが空です - 詳細調査中...");
-
-          // 全てのuser_wordsを取得して状況確認
-          const { data: allUserWords } = await supabase
-            .from(TABLES.USER_WORDS)
-            .select("*")
-            .eq("user_id", user.id);
-
-          console.log("ユーザーの全user_wordsレコード:", allUserWords);
-
           return [];
         }
 
         const wordPairs: ExtendedWordPair[] =
           data
-            ?.map((item: any): ExtendedWordPair | null => {
-              console.log("Processing item:", item);
+            ?.map(
+              (item: {
+                id: number;
+                word_id: number;
+                mastered: boolean;
+                review_date: string | null;
+                last_studied_at: string | null;
+                wordbook_id: number | null;
+                words:
+                  | {
+                      id: number;
+                      word: string;
+                      meaning: string;
+                      pronunciation: string | null;
+                    }
+                  | {
+                      id: number;
+                      word: string;
+                      meaning: string;
+                      pronunciation: string | null;
+                    }[];
+              }): ExtendedWordPair | null => {
+                if (!item.words) {
+                  console.error("words プロパティが見つかりません:", item);
+                  return null;
+                }
 
-              if (!item.words) {
-                console.error("words プロパティが見つかりません:", item);
-                return null;
+                // wordsが配列の場合は最初の要素を取得
+                const wordsData = Array.isArray(item.words)
+                  ? item.words[0]
+                  : item.words;
+
+                if (!wordsData) {
+                  console.error("words データが見つかりません:", item);
+                  return null;
+                }
+
+                return {
+                  word: wordsData.word,
+                  meaning: wordsData.meaning,
+                  pronunciation: wordsData.pronunciation || undefined,
+                  id: wordsData.id.toString(),
+                  user_word_id: item.id.toString(),
+                  mastered: item.mastered,
+                  reviewDate: item.review_date,
+                  lastStudiedAt: item.last_studied_at || undefined,
+                  wordbook_id: item.wordbook_id?.toString(),
+                };
               }
-
-              // wordsが配列の場合は最初の要素を取得
-              const wordsData = Array.isArray(item.words)
-                ? item.words[0]
-                : item.words;
-
-              if (!wordsData) {
-                console.error("words データが見つかりません:", item);
-                return null;
-              }
-
-              return {
-                word: wordsData.word,
-                meaning: wordsData.meaning,
-                pronunciation: wordsData.pronunciation || undefined,
-                id: wordsData.id.toString(),
-                user_word_id: item.id.toString(),
-                mastered: item.mastered,
-                reviewDate: item.review_date,
-                wordbook_id: item.wordbook_id?.toString(),
-              };
-            })
+            )
             .filter((item): item is ExtendedWordPair => item !== null) || [];
-
-        console.log("loadWords - 処理後データ:", wordPairs);
 
         return wordPairs;
       } catch (err: unknown) {
@@ -370,6 +357,7 @@ export const useUserWords = (): UseUserWordsReturn => {
           .update({
             mastered: mastered,
             review_date: nextReviewDate,
+            last_studied_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           })
           .eq("id", userWordId)
@@ -384,6 +372,45 @@ export const useUserWords = (): UseUserWordsReturn => {
           err instanceof Error
             ? err.message
             : "単語ステータスの更新中にエラーが発生しました";
+        setError(errorMessage);
+        throw new Error(errorMessage);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [user]
+  );
+
+  // 単語帳の学習開始を記録
+  const recordStudySession = useCallback(
+    async (wordbookId: string): Promise<void> => {
+      if (!user) {
+        setError("ログインが必要です");
+        return;
+      }
+      setLoading(true);
+      setError(null);
+
+      try {
+        // 指定された単語帳の全ての単語の最終学習日時を更新
+        const { error: updateError } = await supabase
+          .from(TABLES.USER_WORDS)
+          .update({
+            last_studied_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("user_id", user.id)
+          .eq("wordbook_id", parseInt(wordbookId));
+
+        if (updateError) {
+          throw updateError;
+        }
+      } catch (err: unknown) {
+        console.error("学習セッション記録エラー詳細:", err);
+        const errorMessage =
+          err instanceof Error
+            ? err.message
+            : "学習セッションの記録中にエラーが発生しました";
         setError(errorMessage);
         throw new Error(errorMessage);
       } finally {
@@ -520,6 +547,7 @@ export const useUserWords = (): UseUserWordsReturn => {
     loadWords,
     loadWordbooks,
     updateWordStatus,
+    recordStudySession,
     createWordbook,
     mergeWordbooks,
     deleteWordbook,

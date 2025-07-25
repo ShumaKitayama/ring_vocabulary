@@ -1,58 +1,75 @@
+// 日付操作のユーティリティ関数
+
 /**
- * 特定の日数を加算した日付を返す
- * @param date 基準となる日付
- * @param days 加算する日数
- * @returns 加算後の日付
+ * 指定した日数を現在の日付に加算する
  */
-export function addDays(date: Date, days: number): Date {
+export const addDays = (date: Date, days: number): Date => {
   const result = new Date(date);
-  result.setDate(date.getDate() + days);
+  result.setDate(result.getDate() + days);
   return result;
-}
+};
 
 /**
- * 日付の差分を日数で返す
- * @param date1 日付1
- * @param date2 日付2
- * @returns 日付の差分（日数）
+ * 現在日時から指定日付までの日数を計算する（日付のみで比較）
  */
-export function diffDays(date1: Date, date2: Date): number {
-  const diffTime = Math.abs(date2.getTime() - date1.getTime());
-  return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-}
-
-/**
- * 間隔反復計算
- * 復習スケジュール用の次回学習日を計算する
- * @param reviewCount 復習回数
- * @returns 次回復習までの日数
- */
-export function calculateNextReviewDays(reviewCount: number): number {
-  // 間隔は 1→3→7→14→30→90→180 日...と増加
-  const intervals = [1, 3, 7, 14, 30, 90, 180];
-  const index = Math.min(reviewCount, intervals.length - 1);
-  return intervals[index];
-}
-
-/**
- * 今日の日付を YYYY-MM-DD 形式で返す
- * @returns YYYY-MM-DD 形式の文字列
- */
-export function getTodayString(): string {
-  return new Date().toISOString().split("T")[0];
-}
-
-/**
- * 日付文字列が今日以前かどうか確認する
- * @param dateString YYYY-MM-DD 形式の日付文字列
- * @returns 今日以前であれば true
- */
-export function isDateOnOrBeforeToday(dateString: string): boolean {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
+export const getDaysFromNow = (dateString: string): number => {
   const targetDate = new Date(dateString);
-  targetDate.setHours(0, 0, 0, 0);
+  const now = new Date();
 
-  return targetDate <= today;
-}
+  // 時間部分を0にして日付のみで比較
+  targetDate.setHours(0, 0, 0, 0);
+  now.setHours(0, 0, 0, 0);
+
+  const diffTime = now.getTime() - targetDate.getTime();
+  return Math.floor(diffTime / (1000 * 60 * 60 * 24));
+};
+
+/**
+ * 相対的な日付文字列を返す
+ */
+export const formatRelativeDate = (dateString: string): string => {
+  const daysAgo = getDaysFromNow(dateString);
+
+  if (daysAgo === 0) {
+    return "今日";
+  } else if (daysAgo === 1) {
+    return "昨日";
+  } else if (daysAgo < 7) {
+    return `${daysAgo}日前`;
+  } else if (daysAgo < 30) {
+    const weeksAgo = Math.floor(daysAgo / 7);
+    return `${weeksAgo}週間前`;
+  } else if (daysAgo < 365) {
+    const monthsAgo = Math.floor(daysAgo / 30);
+    return `${monthsAgo}ヶ月前`;
+  } else {
+    const yearsAgo = Math.floor(daysAgo / 365);
+    return `${yearsAgo}年前`;
+  }
+};
+
+/**
+ * 復習の推奨度を計算する
+ */
+export const calculateStudyRecommendation = (
+  lastStudyDate: string | null,
+  masteredCount: number,
+  totalCount: number
+): "urgent" | "recommended" | "maintenance" | "completed" => {
+  if (!lastStudyDate) return "urgent";
+
+  const daysAgo = getDaysFromNow(lastStudyDate);
+  const masteryRate = totalCount > 0 ? masteredCount / totalCount : 0;
+
+  if (daysAgo >= 7) return "urgent";
+  if (daysAgo >= 3 || masteryRate < 0.5) return "recommended";
+  if (masteryRate < 0.8) return "maintenance";
+  return "completed";
+};
+
+export const dateUtils = {
+  addDays,
+  getDaysFromNow,
+  formatRelativeDate,
+  calculateStudyRecommendation,
+};

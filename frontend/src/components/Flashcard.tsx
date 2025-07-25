@@ -14,7 +14,7 @@ import {
   Check as CheckIcon,
   VolumeUp as VolumeUpIcon,
 } from "@mui/icons-material";
-import type { WordPair } from "../types";
+import type { WordPair, ExtendedWordPair } from "../types";
 import { useUserWords } from "../hooks/useUserWords";
 import { addDays } from "../utils/dateUtils";
 import {
@@ -36,9 +36,15 @@ const Flashcard = ({ wordPairs, onExit }: FlashcardProps) => {
   ]);
   const [masteredWords, setMasteredWords] = useState<Set<string>>(new Set());
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [sessionRecorded, setSessionRecorded] = useState(false);
+  const [showMasteredWords, setShowMasteredWords] = useState(() => {
+    // LocalStorageから設定を復元（デフォルトはtrue）
+    const saved = localStorage.getItem("flashcard_showMasteredWords");
+    return saved ? JSON.parse(saved) : true;
+  }); // 覚えた単語を表示するかどうか
 
   // 単語状態管理フック
-  const { updateWordStatus, error } = useUserWords();
+  const { updateWordStatus, recordStudySession, error } = useUserWords();
 
   // エラー処理
   useEffect(() => {
@@ -47,9 +53,72 @@ const Flashcard = ({ wordPairs, onExit }: FlashcardProps) => {
     }
   }, [error]);
 
+  // 初期化時に覚えた単語の状態を復元
+  useEffect(() => {
+    if (wordPairs.length > 0) {
+      const initialMasteredWords = new Set<string>();
+      wordPairs.forEach((pair) => {
+        if (pair.mastered && pair.user_word_id) {
+          initialMasteredWords.add(pair.user_word_id);
+        }
+      });
+      setMasteredWords(initialMasteredWords);
+    }
+  }, [wordPairs]);
+
+  // 表示モード設定の永続化
+  useEffect(() => {
+    localStorage.setItem(
+      "flashcard_showMasteredWords",
+      JSON.stringify(showMasteredWords)
+    );
+  }, [showMasteredWords]);
+
+  // 学習セッション開始を記録
+  useEffect(() => {
+    const recordSession = async () => {
+      if (!sessionRecorded && wordPairs.length > 0) {
+        const firstWordPair = wordPairs[0] as ExtendedWordPair;
+        if (firstWordPair?.wordbook_id) {
+          try {
+            await recordStudySession(firstWordPair.wordbook_id);
+            setSessionRecorded(true);
+          } catch (err) {
+            console.error("学習セッション記録エラー:", err);
+          }
+        }
+      }
+    };
+
+    recordSession();
+  }, [wordPairs, sessionRecorded, recordStudySession]);
+
+  // 初期化時とフィルタリング状態変更時に表示更新
+  useEffect(() => {
+    if (wordPairs.length > 0) {
+      const filteredPairs = getFilteredPairs();
+      setShuffledPairs([...filteredPairs]);
+      setCurrentIndex(0);
+      setShowMeaning(false);
+    }
+  }, [showMasteredWords, masteredWords, wordPairs]);
+
+  // 覚えた単語のフィルタリング
+  const getFilteredPairs = () => {
+    if (showMasteredWords) {
+      return wordPairs;
+    } else {
+      return wordPairs.filter((pair) => {
+        const userWordId = pair.user_word_id;
+        return !userWordId || !masteredWords.has(userWordId);
+      });
+    }
+  };
+
   // シャッフル関数
   const shuffleCards = () => {
-    const shuffled = [...wordPairs].sort(() => Math.random() - 0.5);
+    const filteredPairs = getFilteredPairs();
+    const shuffled = [...filteredPairs].sort(() => Math.random() - 0.5);
     setShuffledPairs(shuffled);
     setCurrentIndex(0);
     setShowMeaning(false);
@@ -58,10 +127,32 @@ const Flashcard = ({ wordPairs, onExit }: FlashcardProps) => {
 
   // 順番に戻す関数
   const resetOrder = () => {
-    setShuffledPairs([...wordPairs]);
+    const filteredPairs = getFilteredPairs();
+    setShuffledPairs([...filteredPairs]);
     setCurrentIndex(0);
     setShowMeaning(false);
     setShuffled(false);
+  };
+
+  // 表示モード切り替え
+  const toggleShowMasteredWords = () => {
+    setShowMasteredWords(!showMasteredWords);
+    // モード切り替え後、現在の表示を更新
+    const filteredPairs = showMasteredWords
+      ? wordPairs.filter((pair) => {
+          const userWordId = pair.user_word_id;
+          return !userWordId || !masteredWords.has(userWordId);
+        })
+      : wordPairs;
+
+    if (shuffled) {
+      const newShuffled = [...filteredPairs].sort(() => Math.random() - 0.5);
+      setShuffledPairs(newShuffled);
+    } else {
+      setShuffledPairs([...filteredPairs]);
+    }
+    setCurrentIndex(0);
+    setShowMeaning(false);
   };
 
   // 次の単語へ
@@ -134,9 +225,31 @@ const Flashcard = ({ wordPairs, onExit }: FlashcardProps) => {
       console.error("単語ステータスの更新エラー:", error);
     }
 
-    // 自動で次の単語へ（最後でなければ）
-    if (currentIndex < shuffledPairs.length - 1) {
-      handleNext();
+    // 覚えた単語を隠すモードの場合、現在の単語が除外される可能性があるため
+    // フィルタリング後の配列を確認して適切にナビゲーション
+    if (!showMasteredWords) {
+      // フィルタリングし直す
+      const filteredPairs = wordPairs.filter((pair) => {
+        const userWordId = pair.user_word_id;
+        return !userWordId || !masteredWords.has(userWordId);
+      });
+
+      if (shuffled) {
+        const newShuffled = [...filteredPairs].sort(() => Math.random() - 0.5);
+        setShuffledPairs(newShuffled);
+      } else {
+        setShuffledPairs([...filteredPairs]);
+      }
+
+      // インデックスを調整
+      if (currentIndex >= filteredPairs.length) {
+        setCurrentIndex(Math.max(0, filteredPairs.length - 1));
+      }
+    } else {
+      // 通常モードでは次の単語へ
+      if (currentIndex < shuffledPairs.length - 1) {
+        handleNext();
+      }
     }
   };
 
@@ -145,16 +258,45 @@ const Flashcard = ({ wordPairs, onExit }: FlashcardProps) => {
 
   // 防御的チェック：データが正しく渡されているか確認
   if (!shuffledPairs || shuffledPairs.length === 0) {
-    return (
-      <Box sx={{ mt: 3, textAlign: "center" }}>
-        <Typography variant="h6" color="error">
-          学習する単語がありません
-        </Typography>
-        <Button variant="outlined" onClick={onExit} sx={{ mt: 2 }}>
-          戻る
-        </Button>
-      </Box>
-    );
+    if (!showMasteredWords && wordPairs.length > 0) {
+      // 覚えた単語を隠すモードで、すべて覚えた場合
+      return (
+        <Box sx={{ mt: 3, textAlign: "center" }}>
+          <Typography variant="h5" color="success.main" gutterBottom>
+            🎉 おめでとうございます！
+          </Typography>
+          <Typography variant="h6" color="text.secondary" gutterBottom>
+            すべての単語を覚えました！
+          </Typography>
+          <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
+            覚えた単語も含めて復習したい場合は、「覚えた単語を表示」ボタンを押してください。
+          </Typography>
+          <Box sx={{ display: "flex", justifyContent: "center", gap: 2 }}>
+            <Button
+              variant="contained"
+              color="success"
+              onClick={toggleShowMasteredWords}
+            >
+              覚えた単語を表示
+            </Button>
+            <Button variant="outlined" onClick={onExit}>
+              戻る
+            </Button>
+          </Box>
+        </Box>
+      );
+    } else {
+      return (
+        <Box sx={{ mt: 3, textAlign: "center" }}>
+          <Typography variant="h6" color="error">
+            学習する単語がありません
+          </Typography>
+          <Button variant="outlined" onClick={onExit} sx={{ mt: 2 }}>
+            戻る
+          </Button>
+        </Box>
+      );
+    }
   }
 
   if (!currentPair) {
@@ -325,7 +467,7 @@ const Flashcard = ({ wordPairs, onExit }: FlashcardProps) => {
         </Button>
       </Box>
 
-      <Box sx={{ display: "flex", justifyContent: "center", gap: 2 }}>
+      <Box sx={{ display: "flex", justifyContent: "center", gap: 2, mb: 2 }}>
         <Button
           variant="outlined"
           startIcon={<RefreshIcon />}
@@ -335,14 +477,28 @@ const Flashcard = ({ wordPairs, onExit }: FlashcardProps) => {
           {shuffled ? "順番に戻す" : "シャッフル"}
         </Button>
 
+        <Button
+          variant="outlined"
+          onClick={toggleShowMasteredWords}
+          color={showMasteredWords ? "success" : "warning"}
+        >
+          {showMasteredWords ? "覚えた単語を隠す" : "覚えた単語を表示"}
+        </Button>
+
         <Button variant="outlined" color="error" onClick={onExit}>
           終了
         </Button>
       </Box>
 
-      <Typography variant="body2" sx={{ mt: 3, color: "text.secondary" }}>
-        覚えた単語は{masteredWords.size}個 / {wordPairs.length}個
-      </Typography>
+      <Box sx={{ textAlign: "center", mt: 2 }}>
+        <Typography variant="body2" color="text.secondary">
+          覚えた単語は{masteredWords.size}個 / {wordPairs.length}個
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          {showMasteredWords ? "全ての単語を表示中" : "未習得の単語のみ表示中"}{" "}
+          ({shuffledPairs.length}個)
+        </Typography>
+      </Box>
     </Box>
   );
 };

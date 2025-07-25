@@ -50,17 +50,7 @@ const Register = ({ onToggleForm }: RegisterProps) => {
     setLoading(true);
 
     try {
-      console.log("Starting user registration:", { email });
-
-      const { error, data } = await signUp(email, password);
-
-      console.log("Registration response:", {
-        hasError: !!error,
-        hasData: !!data,
-        errorMessage: error?.message,
-        errorCode: error?.name,
-        dataKeys: data ? Object.keys(data) : null,
-      });
+      const { error } = await signUp(email, password);
 
       if (error) {
         console.error("Registration error details:", {
@@ -108,7 +98,6 @@ const Register = ({ onToggleForm }: RegisterProps) => {
 
         setError(errorMessage);
       } else {
-        console.log("Registration successful");
         setSuccess("確認メールを送信しました。メールをご確認ください。");
         setEmail("");
         setPassword("");

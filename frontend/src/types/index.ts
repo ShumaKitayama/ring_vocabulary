@@ -51,6 +51,7 @@ export interface WordbookWord {
 export interface ExtendedWordPair extends WordPair {
   wordbook_id?: string;
   user_word_id?: string; // user_wordsテーブルのID
+  lastStudiedAt?: string; // 最終学習日時
 }
 
 // OCR関数から返されるテキストセグメント（データベース関連フィールドなし）

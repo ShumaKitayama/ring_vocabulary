@@ -13,22 +13,14 @@ import {
   CardActions,
   Tabs,
   Tab,
+  Chip,
 } from "@mui/material";
 import ImageUploader from "../components/ImageUploader";
 import WordEditForm from "../components/WordEditForm";
 import WordbookList from "../components/WordbookList";
 import Flashcard from "../components/Flashcard";
-import FillInSetList from "../components/FillInSetList";
-import FillInCreator from "../components/FillInCreator";
-import FillInStudy from "../components/FillInStudy";
 import { useUserWords } from "../hooks/useUserWords";
-import type {
-  OcrResponse,
-  WordPair,
-  ExtendedWordPair,
-  TextOcrResponse,
-  FillInSet,
-} from "../types";
+import type { OcrResponse, WordPair, ExtendedWordPair } from "../types";
 
 enum AppState {
   HOME, // ホーム画面（タブ選択）
@@ -53,11 +45,6 @@ const Home = () => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // 穴埋め関連の状態
-  const [selectedFillInSet, setSelectedFillInSet] = useState<FillInSet | null>(
-    null
-  );
-
   // 単語データフック
   const { loadWords } = useUserWords();
 
@@ -71,9 +58,8 @@ const Home = () => {
   };
 
   // 文章OCR完了時の処理
-  const handleTextOcrComplete = (result: TextOcrResponse) => {
+  const handleTextOcrComplete = () => {
     // 現在は何もしない（FillInCreatorで直接処理される）
-    console.log("Text OCR completed:", result);
   };
 
   // エラー発生時の処理
@@ -104,6 +90,7 @@ const Home = () => {
           (word: ExtendedWordPair) => ({
             word: word.word,
             meaning: word.meaning,
+            pronunciation: word.pronunciation, // 発音記号を追加
             id: word.id,
             mastered: word.mastered,
             reviewDate: word.reviewDate,
@@ -137,6 +124,7 @@ const Home = () => {
           (word: ExtendedWordPair) => ({
             word: word.word,
             meaning: word.meaning,
+            pronunciation: word.pronunciation, // 発音記号を追加
             id: word.id,
             mastered: word.mastered,
             reviewDate: word.reviewDate,
@@ -169,25 +157,6 @@ const Home = () => {
     setAppState(AppState.HOME);
     setWordPairs([]);
     setImageUrl(null);
-    setSelectedFillInSet(null);
-  };
-
-  // 穴埋めセット選択時の処理
-  const handleSelectFillInSet = (set: FillInSet) => {
-    setSelectedFillInSet(set);
-    setAppState(AppState.FILL_IN_CREATE);
-  };
-
-  // 穴埋めセット作成時の処理
-  const handleCreateFillInSet = (set: FillInSet) => {
-    setSelectedFillInSet(set);
-    setAppState(AppState.FILL_IN_CREATE);
-  };
-
-  // 穴埋め学習開始時の処理
-  const handleStartFillInStudy = (set: FillInSet) => {
-    setSelectedFillInSet(set);
-    setAppState(AppState.FILL_IN_STUDY);
   };
 
   // スナックバーを閉じる
@@ -305,12 +274,53 @@ const Home = () => {
                     画像から文章を読み取って穴埋め問題を作成し、学習します
                   </Typography>
 
-                  {/* 穴埋めセット一覧 */}
-                  <FillInSetList
-                    onSelectSet={handleSelectFillInSet}
-                    onCreateSet={handleCreateFillInSet}
-                    onStudySet={handleStartFillInStudy}
-                  />
+                  {/* 準備中表示 */}
+                  <Card
+                    sx={{
+                      mb: 3,
+                      textAlign: "center",
+                      py: 8,
+                      bgcolor: "grey.50",
+                      border: "2px dashed",
+                      borderColor: "grey.300",
+                    }}
+                  >
+                    <CardContent>
+                      <Typography
+                        variant="h4"
+                        sx={{
+                          mb: 2,
+                          color: "warning.main",
+                          fontWeight: "bold",
+                        }}
+                      >
+                        🚧 準備中 🚧
+                      </Typography>
+                      <Typography
+                        variant="h6"
+                        color="text.secondary"
+                        gutterBottom
+                      >
+                        穴埋め問題機能は現在開発中です
+                      </Typography>
+                      <Typography
+                        variant="body1"
+                        color="text.secondary"
+                        sx={{ mb: 3 }}
+                      >
+                        より良い学習体験を提供するため、機能の改善を行っています。
+                        <br />
+                        しばらくお待ちください。
+                      </Typography>
+                      <Chip
+                        label="Coming Soon"
+                        color="warning"
+                        variant="outlined"
+                        size="medium"
+                        sx={{ fontSize: "16px", py: 2, px: 2 }}
+                      />
+                    </CardContent>
+                  </Card>
                 </Box>
               )}
             </Box>
@@ -346,18 +356,23 @@ const Home = () => {
             </Box>
           )}
 
-          {appState === AppState.FILL_IN_CREATE && selectedFillInSet && (
-            <FillInCreator
-              selectedSet={selectedFillInSet}
-              onBack={handleBackToHome}
-            />
-          )}
-
-          {appState === AppState.FILL_IN_STUDY && selectedFillInSet && (
-            <FillInStudy
-              selectedSet={selectedFillInSet}
-              onBack={handleBackToHome}
-            />
+          {(appState === AppState.FILL_IN_CREATE ||
+            appState === AppState.FILL_IN_STUDY) && (
+            <Box sx={{ textAlign: "center", py: 8 }}>
+              <Typography variant="h4" sx={{ mb: 2, color: "warning.main" }}>
+                🚧 準備中 🚧
+              </Typography>
+              <Typography variant="h6" color="text.secondary" gutterBottom>
+                この機能は現在開発中です
+              </Typography>
+              <Button
+                variant="outlined"
+                onClick={handleBackToHome}
+                sx={{ mt: 2 }}
+              >
+                ← ホームに戻る
+              </Button>
+            </Box>
           )}
 
           <Snackbar

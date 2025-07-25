@@ -116,9 +116,7 @@ const WordEditForm = ({
       }語)`;
 
       // 単語データを単語帳として保存
-      console.log("単語帳保存開始:", wordPairs);
-      const wordbookId = await saveWords(wordPairs, wordbookTitle);
-      console.log("単語帳保存完了 - ID:", wordbookId);
+      await saveWords(wordPairs, wordbookTitle);
 
       alert(`単語帳「${wordbookTitle}」を保存しました！`);
 
