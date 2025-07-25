@@ -183,7 +183,7 @@ const Home = () => {
       >
         <Box sx={{ textAlign: "center" }}>
           <Typography variant="h4" component="h1" gutterBottom align="center">
-            Ring Vocabulary
+            ぼきゃぶらりんぐ
           </Typography>
 
           <Typography

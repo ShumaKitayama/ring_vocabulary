@@ -1,7 +1,7 @@
 {
-  "name": "ring-vocabulary",
+  "name": "vocabularing",
   "version": "1.0.0",
-  "description": "画像から単語を抽出し、単語帳学習ができるアプリ",
+  "description": "ぼきゃぶらりんぐ - 画像から単語を抽出し、単語帳学習ができるアプリ",
   "private": true,
   "scripts": {
     "dev:frontend": "cd frontend && npm run dev",

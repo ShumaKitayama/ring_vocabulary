@@ -68,7 +68,7 @@ const AuthenticatedLayout = ({ children }: { children: React.ReactNode }) => {
       <AppBar position="static">
         <Toolbar>
           <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-            Ring Vocabulary
+            ぼきゃぶらりんぐ
           </Typography>
           <Box sx={{ display: "flex", alignItems: "center" }}>
             <Typography variant="body2" sx={{ mr: 2 }}>
